@@ -335,11 +335,6 @@ def sku_for(chain: Optional[str], contract: Optional[str],
     return f"{chain}/{contract}/{token_id}" if token_id else f"{chain}/{contract}"
 
 
-def sku_from_url(url: str) -> Optional[str]:
-    parts = item_parts_from_url(url)
-    return sku_for(*parts) if parts else None
-
-
 def item_url(chain: Optional[str], contract: Optional[str],
              token_id: Optional[str], locale: Optional[str] = None) -> str:
     """An item's own page. Empty string when the parts are not there."""

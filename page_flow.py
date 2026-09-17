@@ -325,8 +325,17 @@ def is_unpainted(state: str, html: Optional[str]) -> bool:
 # belong in this comment.
 RETRY_ON_BLOCKED = True
 BLOCK_RETRIES_WITHOUT_POOL = 3
-BLOCK_RETRIES_WITH_POOL = 4
 SOLVES_PER_PAGE = 1
+
+# There is deliberately NO `BLOCK_RETRIES_WITH_POOL` beside the constant
+# above, and its absence is the point. It used to be here, set to 4, and
+# nothing read it: with a pool the budget is `--proxy-block-retries`, which
+# defaults to 2, so the constant was a second number claiming a different
+# policy while the flag quietly decided the real one. §17 calls that a
+# policy constant nothing consults — the same defect as dead code, and
+# harder to see, because the prose reads like enforcement. The with-pool
+# budget is the FLAG; the constant above is the fallback for when there is
+# no pool and therefore no flag to honour.
 
 # Whether a retry has to discard the browser context rather than reload the
 # page. True, on the family's rule that a challenge issued against one

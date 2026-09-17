@@ -278,6 +278,35 @@ def test_empty_symbol_is_null():
     return ok
 
 
+def test_enforcement_flags_are_pinned_not_trusted():
+    """Pin the CURRENT behaviour of a column never seen taking its other value.
+
+    §10 says to pin a known limitation rather than half-guard it, so a future
+    change becomes a decision instead of a surprise. Neither enforcement flag
+    has ever been observed True — 3,400 items across two orderings and ten
+    collections, measured 2026-09-17 — so what is asserted here is the SHAPE
+    (a bool or a null, never a string, never a 0/1) and not the value. If one
+    ever does come back True, nothing here breaks; if the site starts sending
+    something that is not a boolean, this says so.
+    """
+    group("enforcement flags")
+    ok = True
+    seen = set()
+    for name in ("collection", "collection_solana", "collection_ja",
+                 "cdp_scraping_browser", "item"):
+        for row in P.parse_rows(html_of(name), fixture(name)["url"],
+                                mode="items"):
+            for column in ("is_delisted", "is_compromised"):
+                value = getattr(row, column)
+                seen.add(repr(value))
+                ok &= check(value is None or isinstance(value, bool),
+                            "%s: %s is %r, which is neither a bool nor null"
+                            % (name, column, value))
+    ok &= check(bool(seen), "no enforcement flag was read at all")
+    print("  values ever seen in the fixtures: %s" % sorted(seen))
+    return ok
+
+
 def test_prices_are_tokens_not_dollars():
     group("prices")
     ok = True
@@ -1347,6 +1376,53 @@ def test_no_undefined_names():
     return ok
 
 
+def test_no_unreachable_statements():
+    """A statement after return/raise/break/continue in the SAME block.
+
+    §22's check, which found the same fifteen lines in six sibling repos —
+    byte for byte, present since each one's first commit: a function whose
+    `def` line had been lost, leaving its docstring and body absorbed into
+    the end of the function above it. It parses, it imports, `--help` works,
+    `compileall` passes, and the §10 undefined-name walk cannot see it and
+    SHOULD not — that walk pools every binding in a file rather than
+    tracking scopes, so a name in the dead block resolves against a real
+    parameter elsewhere. This is a second check, not a tightening of the
+    first.
+
+    Zero false positives across eighteen repos when it was written.
+    """
+    group("unreachable statements")
+    ok = True
+    scanned = 0
+    terminators = (ast.Return, ast.Raise, ast.Break, ast.Continue)
+    for filename in sorted(f for f in os.listdir(REPO_ROOT)
+                           if f.endswith(".py")):
+        with open(os.path.join(REPO_ROOT, filename), encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename)
+        scanned += 1
+        for node in ast.walk(tree):
+            for field in ("body", "orelse", "finalbody"):
+                block = getattr(node, field, None)
+                if not isinstance(block, list):
+                    continue
+                for index, statement in enumerate(block[:-1]):
+                    if isinstance(statement, terminators):
+                        dead = block[index + 1]
+                        ok &= check(False,
+                                    "%s line %d: %s is unreachable — the "
+                                    "statement above it on line %d always "
+                                    "leaves the block. A lost `def` line "
+                                    "looks exactly like this (§22)."
+                                    % (filename, dead.lineno,
+                                       type(dead).__name__, statement.lineno))
+                        break
+    # A binding check that binds nothing passes for the wrong reason (§22).
+    ok &= check(scanned >= 10,
+                "the unreachable-statement walk only looked at %d file(s)"
+                % scanned)
+    return ok
+
+
 def test_dockerfile_matches_its_entrypoint():
     """The COPY list against the real import graph.
 
@@ -1408,13 +1484,19 @@ def test_dockerfile_matches_its_entrypoint():
 # ===========================================================================
 # Wording, configuration and the repo itself
 # ===========================================================================
+# ASSEMBLED FROM PIECES, never written out whole, and that is the point.
+# A check that spells its own banned phrases has to exempt the file it lives
+# in — and three repos in this family did exactly that, leaving the one file
+# most likely to acquire a stray phrase or a pasted credential as the one
+# file nobody scanned (§22). Built this way, the scan covers itself.
+_A = "anti" + "detect"
 BANNED_PHRASES = (
-    "cloud browser",
-    "antidetect browser",
-    "2scraper Antidetect Browser",
-    "gate.2prx.com",
-    "--antidetect",
-    "ANTIDETECT_LOCAL_API",
+    "cloud" + " browser",
+    _A + " browser",
+    "2scraper " + _A.capitalize() + " Browser",
+    "gate." + "2prx" + ".com",
+    "--" + _A,
+    _A.upper() + "_LOCAL_API",
 )
 
 
@@ -1435,18 +1517,14 @@ def test_wording():
                                       ".toml", ".example")):
                 continue
             path = os.path.join(root, filename)
-            # The two files that DEFINE the banned list necessarily contain
-            # it. Excluded by name rather than by a cleverer match, so that
-            # adding a third place the list lives is a decision.
-            if filename in ("smoke_test.py", "ci_checks.py"):
-                continue
             with open(path, encoding="utf-8", errors="replace") as f:
                 text = f.read()
             scanned += 1
             for phrase in BANNED_PHRASES:
-                if phrase == "cloud browser" and "Scraping Browser" in text \
-                        and phrase not in text.lower():
-                    continue
+                # No escapes. An escape would have to name the phrase it
+                # excuses, and naming it is using it — which is how this
+                # check's own escape clause became the only hit in the repo
+                # the moment the check started scanning its own file (§22).
                 ok &= check(phrase.lower() not in text.lower(),
                             "%s contains the banned phrase %r — write "
                             "'Scraping Browser API' instead (§12)"
@@ -1554,9 +1632,33 @@ def test_ci_checks_is_wired_up():
     """
     group("ci checks")
     ok = True
-    script = os.path.join(REPO_ROOT, ".github", "ci_checks.py")
-    ok &= check(os.path.exists(script), "ci_checks.py is missing")
-    workflow = os.path.join(REPO_ROOT, ".github", "workflows", "tests.yml")
+    github_dir = os.path.join(REPO_ROOT, ".github")
+    script = os.path.join(github_dir, "ci_checks.py")
+    workflow = os.path.join(github_dir, "workflows", "tests.yml")
+
+    # THE ONLY ESCAPE, and it triggers on the WHOLE `.github` directory being
+    # absent — never on a file inside it being missing. Two sibling repos run
+    # this suite INSIDE their Docker image, which deliberately carries no
+    # `.github`, so a check that reads a workflow is correct in the repo and
+    # red in the image (§22). The narrowness is the point: a check that
+    # quietly starts passing once its input disappears is the same failure
+    # wearing a new face, so `.github` present with a file missing is still a
+    # failure. Before this existed the whole suite died here with
+    # FileNotFoundError — a crash rather than a report.
+    if not os.path.isdir(github_dir):
+        print("  SKIP  no .github/ in this tree at all — there is no CI "
+              "material here to check. (A missing FILE inside .github still "
+              "fails; only the whole directory being absent skips.)")
+        return ok
+
+    ok &= check(os.path.exists(script),
+                "ci_checks.py is missing, and .github/ exists — so this is a "
+                "repo that lost the script rather than a tree that never had "
+                "CI material")
+    ok &= check(os.path.exists(workflow),
+                "tests.yml is missing, and .github/ exists")
+    if not (os.path.exists(script) and os.path.exists(workflow)):
+        return ok
     with open(workflow, encoding="utf-8") as f:
         text = f.read()
     ok &= check("ci_checks.py" in text,
@@ -1605,15 +1707,29 @@ def test_no_dead_policy_constants():
     group("policy constants")
     ok = True
     sources = {name: _engine_source(name) for name in ENGINES}
-    for constant in ("RETRY_ON_BLOCKED", "RETRY_NEEDS_FRESH_CONTEXT",
-                     "BLOCK_RETRIES_WITHOUT_POOL", "SOLVES_PER_PAGE",
-                     "MIN_CARD_MATCHES"):
+    # DERIVED from page_flow rather than listed here, and that is a fix
+    # rather than a tidy-up: the hardcoded list this replaced named five
+    # constants and missed `BLOCK_RETRIES_WITH_POOL`, which was declared,
+    # set to 4, and read by NOTHING — the engines take their with-pool
+    # budget from `--proxy-block-retries` instead. A check with a hand-kept
+    # list only ever covers what someone remembered to add, which is the
+    # same failure as the policy it is checking for (§17).
+    policy = [n for n in dir(page_flow)
+              if n.isupper() and not n.startswith("_")
+              and isinstance(getattr(page_flow, n), (bool, int))
+              and n not in ("CONTENT_TIMEOUT_MS", "SCROLL_PAUSE_MS",
+                            "SCROLL_MAX_ROUNDS", "SCROLL_STABLE_ROUNDS")]
+    ok &= check(len(policy) >= 3,
+                "the policy-constant scan found almost nothing to check")
+    for constant in sorted(policy):
         consumers = [name for name, text in sources.items()
                      if constant in text]
         ok &= check(len(consumers) == len(ENGINES),
-                    "page_flow.%s is read by %s and not by the others — a "
-                    "policy that looks enforced and is not is worse than no "
-                    "policy (§17)" % (constant, consumers or "nothing"))
+                    "page_flow.%s is read by %s and not by all three engines "
+                    "— a policy that looks enforced and is not is worse than "
+                    "no policy (§17). Either every engine consults it, or it "
+                    "should not exist." % (constant, consumers or "nothing"))
+    print("  policy constants checked: %s" % sorted(policy))
     return ok
 
 
@@ -1646,6 +1762,7 @@ def main():
     ok &= test_row_shape_per_mode()
     ok &= test_solana_addresses()
     ok &= test_empty_symbol_is_null()
+    ok &= test_enforcement_flags_are_pinned_not_trusted()
     ok &= test_prices_are_tokens_not_dollars()
     ok &= test_traits_and_rarity()
     ok &= test_activity_rows()
@@ -1674,6 +1791,7 @@ def main():
     ok &= test_engines_import_their_driver_at_module_level()
     ok &= test_engine_parity(skips)
     ok &= test_no_undefined_names()
+    ok &= test_no_unreachable_statements()
     ok &= test_dockerfile_matches_its_entrypoint()
     ok &= test_wording()
     ok &= test_env_example_matches_the_code()

@@ -161,6 +161,25 @@ class Item:
     # item from its marketplace (a reported theft, usually); `is_compromised`
     # flags the account. Both are the site's assertion, carried through
     # rather than acted on.
+    #
+    # NEITHER HAS EVER BEEN SEEN TRUE, and §20 says to write that down rather
+    # than let a column look verified because it is always populated.
+    # Measured 2026-09-17: 3,400 items — 1,000 under the price ordering
+    # across ten collections, and 2,400 under the created ordering across
+    # four — came back `False` on both, with not one True.
+    #
+    # The price-ordered half of that proves nothing on its own and is the
+    # §20 mistake made deliberately, then corrected: an item with a live
+    # listing is by definition not hidden, so looking for a delisting among
+    # listed items is looking where it cannot be. The created-ordered scan is
+    # the one that counts, and it found none either.
+    #
+    # So the open question, unresolved: either OpenSea excludes hidden items
+    # from `collectionItems` altogether — which would make this column a
+    # constant and, by §9, one that should not exist — or they are simply
+    # rarer than 2,400 items of four blue-chip collections. A `False` here is
+    # therefore LESS PROVEN than a `True` would be, and a consumer should not
+    # read it as "OpenSea has checked and cleared this item".
     is_delisted: Optional[bool] = None
     is_compromised: Optional[bool] = None
 
