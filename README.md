@@ -41,12 +41,17 @@ same minute is served normally. That is a Cloudflare rule against one
 signature, not a site that blocks scrapers, and it is named here because the
 failure it produces is the most misleading one OpenSea can give you.
 
+**Confirmed from a second network on the same day.** The canary's first
+dispatch ran the whole three-mode scrape from a bare GitHub runner, with no
+secrets, and came back green with the same numbers: 350 items over 4 pages
+stopping at `listed_items_exhausted`, 202 ranking rows with 201 floors, and a
+sales feed of only sales. Two unrelated datacentre networks, one afternoon.
+
 So the paid products here buy **volume from many addresses, a specific
 country, browser infrastructure you do not run, and a solver for the day
 Cloudflare does issue its managed challenge** — not access. The
-[canary](#the-canary) runs a real three-mode scrape every morning from a bare
-GitHub runner, with no secrets, precisely so that this claim is retested
-without anyone remembering to.
+[canary](#the-canary) re-runs that scrape every morning, precisely so that
+this claim is retested without anyone remembering to.
 
 ---
 
