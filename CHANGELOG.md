@@ -14,6 +14,32 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **A Scraping Browser fixture, and the check that needed it.** The
+  `--cdp-endpoint` path was run for the first time: three modes over a
+  `country-us` profile, 250 rows identical to a local browser's on the same
+  pages, pyppeteer matching Playwright 150 of 150 over the same
+  authenticated endpoint, Selenium refusing it with the documented reason and
+  exit 2, and a second concurrent run exiting 5 with `profile_locked` and the
+  credential masked to `ws://***:***@cb.2captcha.com:9222`.
+
+  The capture from that run is now a fixture, because the auto-solve
+  extension injects a Turnstile hunter into every page it loads and this is
+  the only fixture that can spring that trap. Measured on one collection page
+  fetched two ways in the same hour: `cf-turnstile` 1 over CDP against 0
+  locally, `chrome-extension://…hbpbo` 16 against 0, and
+  `challenges.cloudflare.com` — the marker this repo actually uses — 0 on
+  both. Putting `cf-turnstile` back into the marker set now turns six checks
+  red, one of them on that fixture. A sibling repo shipped the same check and
+  it passed for the wrong reason, having only ever run against pages fetched
+  with a plain client.
+
+### Changed
+
+- The challenge-marker comment in `product_parser.py` and the README now
+  carry THIS site's measurement rather than a sibling's.
+
 ## [0.1.0] - 2026-09-17
 
 First release. Scrapes opensea.io into JSON or CSV from three views, with

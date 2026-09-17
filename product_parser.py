@@ -576,14 +576,33 @@ def served_by_opensea(html: Optional[str]) -> bool:
 #   __cf_chl                      0 on all seven
 #   "Just a moment"               0 on all seven
 #
-# `cf-turnstile` is deliberately NOT here. It is the obvious marker for a
-# Turnstile and it is measured useless in any repo that can reach the
-# Scraping Browser, whose auto-solve extension injects
-# `data-ts-input="cf-turnstile-response"` into every page it loads — 1
-# occurrence on a SERVED page against 0 on a real challenge, in two sibling
-# repos (§8, §19). With it gone, nothing in this set matches anything that
-# extension injects, so this repo needs no extension-tag strip either; adding
-# one would be dead code.
+# `cf-turnstile` is deliberately NOT here, and on this site that is a
+# MEASUREMENT rather than an inherited rule. The 2Captcha Scraping Browser
+# ships an auto-solve extension that injects its own Turnstile hunter into
+# every page it loads. One collection page, fetched two ways within the hour
+# on 2026-09-17:
+#
+#     marker                      over --cdp-endpoint   local browser
+#     cf-turnstile                                  1               0
+#     cf-turnstile-response                         1               0
+#     data-ts-input                                 1               0
+#     hunter.js                                     4               0
+#     chrome-extension://…hbpbo                    16               0
+#     challenges.cloudflare.com                     0               0
+#
+# So the obvious marker fires on a perfectly good 1.26 MB page holding the
+# full catalogue, and the one that works is absent from it. Carrying
+# `cf-turnstile` would report exit 3 on every page fetched over the paid
+# path — which is exactly what happened to a sibling repo's first live run
+# (§8, §19). `smoke_test.py` pins this against a real Scraping Browser
+# capture, because a sibling shipped the same check and it passed for the
+# wrong reason: it ran only against pages fetched with a plain client, which
+# carry no injection at all (§21).
+#
+# With it gone, nothing in this set matches anything that extension injects,
+# so this repo needs no extension-tag strip either; adding one would be dead
+# code. Verified by reverting: putting `cf-turnstile` back turns six checks
+# red, one of them on the Scraping Browser fixture.
 BOT_CHALLENGE_MARKERS = {
     "challenges.cloudflare.com": "cloudflare",
     "cdn-cgi/challenge-platform": "cloudflare",

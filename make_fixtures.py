@@ -109,11 +109,20 @@ SOURCES = {
     "chromium_proxy_error": ("chromium_proxy_error.html",
                              "https://opensea.io/collection/boredapeyachtclub",
                              "items", None),
+    # THE SAME collection page, fetched over the 2Captcha Scraping Browser.
+    # It is here because a guard is only as good as the fixture it runs
+    # against (§21): the check that `cf-turnstile` must never be a marker
+    # would otherwise run only against pages this repo fetched with a local
+    # browser, which carry no extension injection at all — and would pass for
+    # the wrong reason. This one carries the injection, measured.
+    "cdp_scraping_browser": ("cdp_scraping_browser.html",
+                             "https://opensea.io/collection/boredapeyachtclub",
+                             "items", 6),
 }
 
 # Fixtures the suite treats as pages the site really served.
 GOOD_PAGES = ("collection", "collection_solana", "collection_ja", "ranking",
-              "activity", "item")
+              "activity", "item", "cdp_scraping_browser")
 
 
 # ---------------------------------------------------------------------------

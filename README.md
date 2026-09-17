@@ -285,9 +285,59 @@ Nothing above needed a key. These do:
 |---|---|
 | many addresses, or one specific country | `--proxy` / `--proxy-file`, a [2Captcha proxy](https://2captcha.com/proxy) |
 | no browser on your machine at all | `scraper_api_client.py` — one request, `$0.0005`, measured 200/50 rows in 5.0s |
-| a browser you do not run, with persistent cookies | `--cdp-endpoint`, the Scraping Browser API |
+| a browser you do not run, with persistent cookies | `--cdp-endpoint`, the Scraping Browser API — measured below |
 | a consistent device identity | `--fingerprint` |
 | the day Cloudflare issues its managed challenge | `--solve-captcha` (the default already solves when blocked) |
+
+### The Scraping Browser path, measured
+
+Run over a `country-us` Scraping Browser profile on 2026-09-17:
+
+| | |
+|---|---|
+| `--mode items`, 3 pages | 250 rows, exit 0 — cursor pages included, because the in-page `fetch()` works over the remote browser too |
+| `--mode collections`, 2 pages | 150 rows |
+| `--mode activity`, 2 pages | 132 rows |
+| vs the same pages from a local browser in Helsinki | **250 of 250 rows identical** across 13 stable columns |
+| pyppeteer over the same authenticated endpoint | 150 rows, and **150 of 150 identical** to Playwright's |
+| Selenium against it | refused with the reason, exit 2 — `debuggerAddress` is a bare `host:port` with nowhere to put a password |
+| two runs against one profile at once | the second exits **5**, `profile_locked`, with the credential masked to `ws://***:***@cb.2captcha.com:9222` |
+
+**The trap this path springs, and why this repo does not fall into it.** The
+Scraping Browser's auto-solve extension injects its own Turnstile hunter into
+every page it loads. The same collection page, fetched two ways within the
+hour:
+
+| marker | over `--cdp-endpoint` | local browser |
+|---|---|---|
+| `cf-turnstile` | **1** | 0 |
+| `cf-turnstile-response` | 1 | 0 |
+| `data-ts-input` | 1 | 0 |
+| `hunter.js` | 4 | 0 |
+| `chrome-extension://…hbpbo` | 16 | 0 |
+| `challenges.cloudflare.com` | **0** | 0 |
+
+So the obvious marker for a Turnstile fires on a perfectly good 1.26 MB page
+holding the full catalogue, and the marker that works is absent from it.
+`cf-turnstile` is therefore deliberately not in this repo's challenge set,
+and a test pins that against a **real Scraping Browser capture** — putting it
+back turns six checks red.
+
+Pass the endpoint through `.env` rather than the command line, and do not add
+`--proxy` to it: the remote browser has its own exit, and `--concurrency` is
+doubly pointless there because a profile allows one live connection.
+
+**Which `country-` to ask for: it does not matter, and that is measured.** A
+`country-us` profile returned 250 of 250 rows identical to a local browser in
+Helsinki. Prices here are denominated in chain tokens rather than fiat, the
+language is a URL path rather than a geo redirect, and `currencyDefault=usd`
+is what the site sets for a European exit anyway — so nothing in the output
+follows the exit country. `us` is the mild default because OpenSea's origin
+is US-East (`x-vercel-id: …::iad1::`) and the residential pool there is the
+largest; `de` or `gb` measured the same. What OpenSea does geo-restrict is
+TOKEN TRADING — `isGeoRestricted` is a property of a currency and its own
+copy reads "This **feature** of OpenSea is unavailable in your country" —
+which is 0 of 0 rows in all three of the feeds this scraper reads.
 
 ```bash
 # the one-request path, no browser anywhere
@@ -296,10 +346,17 @@ python3 scraper_api_client.py \
 ```
 
 **On captchas, what is and is not known here.** No challenge was met on
-opensea.io while this repo was built: 0 occurrences of
-`challenges.cloudflare.com`, `cdn-cgi/challenge-platform`, `recaptcha`,
-`hcaptcha`, `turnstile`, `datadome`, `perimeterx` or `data-sitekey` across
-seven captures. So the solver path here is **implemented and unexercised** —
+opensea.io while this repo was built, and none is configured on the routes it
+reads. Three separate measurements: 18 vendor markers across 8 captures, all
+0; on a live page `window.grecaptcha`, `window.turnstile` and
+`window.hcaptcha` all undefined, with 0 iframes, 0 `data-sitekey` and 0
+third-party scripts; and in the site's own 7.8 MB JS bundle, 0 occurrences of
+recaptcha, turnstile or hcaptcha. (The five `siteKey` hits in that bundle are
+a substring of `createItemCompositeKey`, and the seventeen `ofac` hits are a
+substring of `clearCofactor`.) What the site DOES sit behind is Cloudflare —
+`server: cloudflare`, `cf-ray` and a `__cf_bm` bot-management cookie on every
+response — so the challenge that could appear is a managed one, which renders
+a Turnstile. So the solver path here is **implemented and unexercised** —
 which is a fact about this repo's testing, not a claim about what a solver
 can do. What this repo implements: reCAPTCHA v2, v2-invisible, v3 and
 enterprise, and Cloudflare Turnstile including the Challenge-page form, whose

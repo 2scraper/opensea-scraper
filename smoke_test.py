@@ -109,7 +109,7 @@ def load_fixtures():
 
 FIXTURES = load_fixtures()
 GOOD_PAGES = ("collection", "collection_solana", "collection_ja", "ranking",
-              "activity", "item")
+              "activity", "item", "cdp_scraping_browser")
 
 
 def fixture(name):
@@ -453,6 +453,59 @@ def test_cf_turnstile_is_not_a_marker():
     ok &= check(P.detect_block_marker(injected) is None,
                 "a page carrying only the auto-solve extension's own script "
                 "is being read as a challenge")
+    return ok
+
+
+def test_extension_injection_does_not_read_as_a_challenge():
+    """The §19 trap, pinned against the fixture that can actually spring it.
+
+    2Captcha's Scraping Browser ships an auto-solve extension that injects
+    its own Turnstile hunter into every page it loads. MEASURED on this site
+    on 2026-09-17, on one collection page fetched two ways in the same hour:
+
+        marker                      over --cdp-endpoint   local browser
+        cf-turnstile                                  1               0
+        cf-turnstile-response                         1               0
+        data-ts-input                                 1               0
+        hunter.js                                     4               0
+        chrome-extension://…hbpbo                    16               0
+        challenges.cloudflare.com                     0               0
+
+    So `cf-turnstile` — the obvious marker for a Turnstile — fires on a
+    perfectly good 1.26 MB page holding the full catalogue, and the marker
+    that actually works is absent from it. Carrying the obvious one would
+    report exit 3 on every page fetched over the paid path, which is exactly
+    what happened to a sibling repo's first live run.
+
+    THE FIXTURE IS THE POINT. A sibling repo shipped this check and it
+    PASSED FOR THE WRONG REASON: it ran only against pages fetched with a
+    plain client, which carry no injection at all (§21). This one runs
+    against a real Scraping Browser capture that does.
+    """
+    group("scraping browser extension injection")
+    ok = True
+    html = html_of("cdp_scraping_browser")
+    url = fixture("cdp_scraping_browser")["url"]
+
+    # The fixture must still CARRY the injection, or this check is theatre.
+    for marker in ("cf-turnstile", "data-ts-input", "hunter.js",
+                   "chrome-extension://"):
+        ok &= check(marker in html,
+                    "the Scraping Browser fixture no longer carries %r, so "
+                    "it can no longer spring the trap it exists for — "
+                    "re-capture it over --cdp-endpoint" % marker)
+
+    # And the parser must nonetheless call it content.
+    ok &= check(P.detect_block_marker(html) is None,
+                "a page the Scraping Browser SERVED is being read as a "
+                "challenge because of its own auto-solve extension")
+    ok &= check(P.detect_page_state(html, 200, url, "items") == "content",
+                "the Scraping Browser fixture must classify as content")
+    ok &= check(bool(P.parse_rows(html, url, mode="items")),
+                "the Scraping Browser fixture must parse to rows")
+    ok &= check("challenges.cloudflare.com" not in html,
+                "the marker this repo DOES carry must be absent from a "
+                "served page, or the measurement above has changed")
     return ok
 
 
@@ -1600,6 +1653,7 @@ def main():
     ok &= test_collection_totals()
     ok &= test_markers_do_not_match_a_good_page()
     ok &= test_cf_turnstile_is_not_a_marker()
+    ok &= test_extension_injection_does_not_read_as_a_challenge()
     ok &= test_the_not_found_sentence_is_not_a_marker()
     ok &= test_classification()
     ok &= test_state_policy_is_complete()
