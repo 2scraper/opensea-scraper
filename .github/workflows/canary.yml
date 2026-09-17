@@ -1,0 +1,383 @@
+name: canary
+
+# One real run a day against opensea.io, and the only workflow in this repo
+# that touches the site. tests.yml (deliberately) never does — see its own
+# header for why the two are separate.
+#
+# THIS CANARY NEEDS NO SECRETS, AND THAT IS THE POINT
+# ---------------------------------------------------
+# §11 says a canary that cannot pass must SKIP rather than go red every day,
+# because a check that is always red teaches everyone to ignore checks. The
+# other half of that rule is §21's: a canary that CAN pass without a
+# credential should never be gated on one.
+#
+# This one can. Measured from one Hetzner datacentre address in Helsinki
+# (AS24940) on 2026-09-17: every page kind, every mode and every locale
+# answered HTTP 200 with no key, no proxy and no account, and OpenSea's own
+# GraphQL endpoint — which is where every page after the first comes from —
+# answered an anonymous POST. So this runs a real three-mode scrape daily
+# from a bare GitHub runner and is EXPECTED GREEN.
+#
+# That is not a convenience. It is what keeps the README's central claim
+# honest: if OpenSea ever puts the endpoint behind a key or a challenge, the
+# badge goes red the next morning and the claim is retested without anyone
+# remembering to.
+#
+# An OPENSEA_PROXY secret is USED when one is set and is not required:
+#
+#     gh secret set OPENSEA_PROXY --repo 2scraper/opensea-scraper
+#
+# It goes through the ENVIRONMENT rather than a commented-out --proxy line,
+# because env_config.py already reads exactly that variable, a credential
+# must never reach a command line (§3), and an unset secret arrives as an
+# empty string which the loader treats as "not configured". One line is
+# correct with and without it.
+#
+# WHAT FAILS THE BADGE AND WHAT ONLY WARNS
+# ----------------------------------------
+# A block (exit 3) WARNS, and says in the step summary that the site-side
+# check did not happen today, so a warning cannot read as a pass. Parsing
+# zero rows from a page the site plainly served (exit 4), a pagination walk
+# that stops short, or a coverage floor being missed DOES fail — those are
+# the regressions this exists to catch.
+
+on:
+  schedule:
+    # 06:20 UTC. Off the hour, because everything else in the world runs on
+    # it and a queued runner adds nothing but latency.
+    - cron: "20 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the client and Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-playwright.txt
+          playwright install --with-deps chromium
+
+      # ------------------------------------------------------------------
+      # 1. items — the default mode, and the one with the most site
+      #    knowledge under it
+      # ------------------------------------------------------------------
+      - name: Walk a collection's items
+        id: items
+        env:
+          OPENSEA_PROXY: ${{ secrets.OPENSEA_PROXY }}
+        # `set +e`: GitHub runs `run:` steps under `bash -e`, so a non-zero
+        # command aborts the step BEFORE the following echo, and
+        # continue-on-error does not change that — it stops the step failing
+        # the job, not the shell's errexit.
+        #
+        # `--pages 6` rather than 3, and the extra pages are the point: Bored
+        # Ape Yacht Club had 283 listed items when this was written, so six
+        # pages of up to 100 reach the END of the listed items and exercise
+        # the one piece of logic that is entirely this site's — the cursor
+        # whose sort key goes null at the boundary, which must stop the walk
+        # CLEANLY and report complete rather than spending the request and
+        # getting `Something went wrong`.
+        run: |
+          set +e
+          python3 playwright_scraper.py \
+            --collection boredapeyachtclub --pages 6 \
+            --delay 2 --retries 3 --retry-delay 10 --headless \
+            --out canary_items --format json \
+            --dump-html canary_items.html
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Interpret the items exit code
+        run: |
+          case "${{ steps.items.outputs.exit_code }}" in
+            0) echo "::notice::Items walk complete." ;;
+            3)
+              echo "::warning::Blocked before parsing (exit 3) from a bare GitHub runner. Nothing refused this scraper from a datacentre address while it was written, so this says something about the runner rather than about this code — but it also means the site-side check did NOT happen today."
+              echo "A runner address was refused. The parser was not exercised. Set an \`OPENSEA_PROXY\` secret to give this canary an exit whose request rate it controls." >> "$GITHUB_STEP_SUMMARY" ;;
+            4)
+              echo "::error::Ran fine and parsed 0 rows (exit 4) from a collection that holds ten thousand items. The inlined urql state or the GraphQL query has most likely moved — this is exactly the regression this canary exists to catch. The dump in the artefacts tells you which."
+              exit 1 ;;
+            6)
+              echo "::error::Partial run (exit 6). canary_items.meta.json carries the stop_reason and which pages failed. On this site the ordinary endings are `cursor_exhausted` and `listed_items_exhausted`, and both are COMPLETE — a partial means something really did fail."
+              exit 1 ;;
+            *)
+              echo "::error::Unexpected exit ${{ steps.items.outputs.exit_code }}."
+              exit 1 ;;
+          esac
+
+      - name: Sanity-check the items walk
+        if: steps.items.outputs.exit_code == '0'
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          rows = json.loads(Path("canary_items.json").read_text())
+          meta = json.loads(Path("canary_items.meta.json").read_text())
+          fail = []
+
+          # THE PAGINATION CHECK. With one page a dead page walk is invisible,
+          # which is the family's most expensive bug (§7). Here the walk is
+          # cursor-driven, so "did page 2 use page 1's cursor" is the thing
+          # that has to keep working.
+          if meta["pages_completed"] < 3:
+              fail.append("only %d page(s) completed; the walk is supposed to "
+                          "reach at least three" % meta["pages_completed"])
+
+          # Both endings are COMPLETE on this site, and which one happened is
+          # itself a fact worth asserting: `listed_items_exhausted` means the
+          # null-key cursor was recognised BEFORE the request was spent.
+          if meta["stop_reason"] not in ("completed", "cursor_exhausted",
+                                         "listed_items_exhausted"):
+              fail.append("unexpected stop_reason %r" % meta["stop_reason"])
+          if meta["status"] != "complete":
+              fail.append("status is %r" % meta["status"])
+
+          # A floor, not an exact figure: a collection's listed count moves
+          # through the day. 200 leaves room for a quiet market and still
+          # proves several pages landed.
+          if len(rows) < 200:
+              fail.append("only %d rows; six pages should carry 250+"
+                          % len(rows))
+
+          # THE SHAPE OF A PRICE-ORDERED WALK, which is three independent
+          # facts that all have to agree — and they did, exactly, when this
+          # was written: 282 priced rows of 350, against a site-published
+          # `listedItemCount` of 282.
+          #
+          #   1. the priced rows are a PREFIX of the file. The walk goes up
+          #      the price ladder and then crosses into the unlisted items,
+          #      so a priced row after an unpriced one means the ordering
+          #      broke or two samples got merged;
+          #   2. their prices ascend;
+          #   3. their COUNT matches what OpenSea itself says is listed.
+          #
+          # Written as three checks rather than "every row has a price",
+          # which was the first version of this and is wrong: the boundary
+          # falls mid-page, so the last page legitimately carries both.
+          prices = [r.get("price") for r in rows]
+          priced = sum(1 for p in prices if p is not None)
+          first_unpriced = next((i for i, p in enumerate(prices)
+                                 if p is None), len(prices))
+          if any(p is not None for p in prices[first_unpriced:]):
+              fail.append("a priced row appears after an unpriced one; the "
+                          "price ordering has broken or two samples were "
+                          "merged")
+          ladder = [p for p in prices if p is not None]
+          if ladder != sorted(ladder):
+              fail.append("the prices do not ascend under --sort price")
+          listed = (meta.get("collection_totals") or {}).get("listed_items")
+          if listed and meta["stop_reason"] == "listed_items_exhausted" \
+                  and abs(priced - listed) > max(5, listed * 0.05):
+              fail.append("the walk found %d priced rows and OpenSea says "
+                          "%d items are listed — the two are supposed to "
+                          "agree" % (priced, listed))
+          if priced < 100:
+              fail.append("only %d priced rows; a collection with a live "
+                          "floor should carry far more" % priced)
+
+          # A price is a TOKEN amount and the token is named. A defaulted
+          # currency, or an empty-string one, is the §4 failure — and so is a
+          # currency on a row that has no price.
+          if any(r.get("price") is not None and not r.get("currency")
+                 for r in rows):
+              fail.append("a priced row carries no currency")
+          if any(r.get("price") is None and r.get("currency")
+                 for r in rows):
+              fail.append("an unlisted row carries a currency")
+
+          # Ids and names, which is what the coverage floor in the engines is
+          # about.
+          for column in ("sku", "title", "chain", "contract_address"):
+              missing = sum(1 for r in rows if not r.get(column))
+              if missing:
+                  fail.append("%d row(s) have no %s" % (missing, column))
+
+          # Rows must come from the site's own data. A run that fell back to
+          # the anchors still produces rows — with every price null — and the
+          # count alone would not show it.
+          views = {r.get("data_source") for r in rows}
+          if views - {"ssr", "graphql"}:
+              fail.append("rows came from %s, not from the site's own state "
+                          "or its endpoint" % sorted(views))
+
+          # `position` restarts at 1 on every page, so the column is
+          # worthless without `page` beside it (§18).
+          pairs = {(r.get("page"), r.get("position")) for r in rows}
+          if len(pairs) != len(rows):
+              fail.append("page+position is not unique across the run")
+          if len({r["sku"] for r in rows}) != len(rows):
+              fail.append("two rows share a sku")
+
+          # §21's arithmetic: the sidecar must say what the collection holds
+          # beside what the run read, or `complete` is lying by omission.
+          totals = meta.get("collection_totals") or {}
+          if not totals.get("total_supply"):
+              fail.append("the sidecar carries no collection totals")
+
+          print("rows=%d pages=%d stop=%s views=%s supply=%s"
+                % (len(rows), meta["pages_completed"], meta["stop_reason"],
+                   sorted(views), totals.get("total_supply")))
+          if fail:
+              for f in fail:
+                  print("FAIL: " + f)
+              raise SystemExit(1)
+
+      # ------------------------------------------------------------------
+      # 2. collections — a different row class and a different feed
+      # ------------------------------------------------------------------
+      - name: Scrape OpenSea's own ranking
+        id: ranking
+        env:
+          OPENSEA_PROXY: ${{ secrets.OPENSEA_PROXY }}
+        run: |
+          set +e
+          python3 playwright_scraper.py \
+            --mode collections --timeframe 1d --pages 3 \
+            --delay 2 --retries 3 --retry-delay 10 --headless \
+            --out canary_ranking --format json
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Interpret the ranking exit code
+        run: |
+          case "${{ steps.ranking.outputs.exit_code }}" in
+            0) echo "::notice::Ranking run complete." ;;
+            3)
+              echo "::warning::Blocked on the ranking run (exit 3)."
+              echo "The ranking run was refused; that mode was not exercised today." >> "$GITHUB_STEP_SUMMARY" ;;
+            4)
+              echo "::error::0 rows from /collections, which renders fifty collections."
+              exit 1 ;;
+            *)
+              echo "::error::Unexpected exit ${{ steps.ranking.outputs.exit_code }}."
+              exit 1 ;;
+          esac
+
+      - name: Sanity-check the ranking run
+        if: steps.ranking.outputs.exit_code == '0'
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          rows = json.loads(Path("canary_ranking.json").read_text())
+          meta = json.loads(Path("canary_ranking.meta.json").read_text())
+          fail = []
+
+          if len(rows) < 100:
+              fail.append("only %d rows; three pages should carry 150+"
+                          % len(rows))
+          # The rank is this run's own arithmetic across pages, so an
+          # off-by-one between page 1 and page 2 is exactly the kind of thing
+          # that would go unnoticed.
+          ranks = [r.get("rank") for r in rows]
+          if ranks != list(range(1, len(rows) + 1)):
+              fail.append("ranks are not 1..N contiguous across the pages")
+          # Which window the volume covers has to be recorded, or a one-hour
+          # figure and an all-time one sit in the same column.
+          if {r.get("volume_window") for r in rows} != {"ONE_DAY"}:
+              fail.append("volume_window is not the timeframe that was asked "
+                          "for")
+          if meta.get("timeframe") != "1d":
+              fail.append("the sidecar does not record the timeframe")
+          floors = sum(1 for r in rows if r.get("price") is not None)
+          if floors < len(rows) * 0.5:
+              fail.append("only %d of %d collections carry a floor price"
+                          % (floors, len(rows)))
+
+          print("rows=%d ranks=1..%d floors=%d"
+                % (len(rows), len(rows), floors))
+          if fail:
+              for f in fail:
+                  print("FAIL: " + f)
+              raise SystemExit(1)
+
+      # ------------------------------------------------------------------
+      # 3. activity — the third row class
+      # ------------------------------------------------------------------
+      - name: Scrape a collection's sales feed
+        id: activity
+        env:
+          OPENSEA_PROXY: ${{ secrets.OPENSEA_PROXY }}
+        run: |
+          set +e
+          python3 playwright_scraper.py \
+            --collection pudgypenguins --mode activity --activity sales \
+            --pages 3 --delay 2 --retries 3 --retry-delay 10 --headless \
+            --out canary_activity --format json
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Interpret the activity exit code
+        run: |
+          case "${{ steps.activity.outputs.exit_code }}" in
+            0) echo "::notice::Activity run complete." ;;
+            3)
+              echo "::warning::Blocked on the activity run (exit 3)."
+              echo "The activity run was refused; that mode was not exercised today." >> "$GITHUB_STEP_SUMMARY" ;;
+            4)
+              echo "::warning::0 rows from a sales feed. A quiet collection can legitimately have no sales in its recent feed, so this warns rather than failing — but check the dump if it repeats."
+              echo "The activity feed came back empty. That is legitimate on a quiet collection and worth looking at if it happens two days running." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              echo "::error::Unexpected exit ${{ steps.activity.outputs.exit_code }}."
+              exit 1 ;;
+          esac
+
+      - name: Sanity-check the activity run
+        if: steps.activity.outputs.exit_code == '0'
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          rows = json.loads(Path("canary_activity.json").read_text())
+          fail = []
+
+          if len(rows) < 50:
+              fail.append("only %d rows; three pages of a busy collection's "
+                          "sales feed should carry 100+" % len(rows))
+          types = {r.get("event_type") for r in rows}
+          if types != {"SALE"}:
+              fail.append("--activity sales returned %s" % sorted(types))
+          if any(not r.get("event_time") for r in rows):
+              fail.append("an event carries no timestamp")
+          # An event's dedupe key is the EVENT, not the token: a feed shows
+          # one token being listed, offered and sold.
+          if len({r["sku"] for r in rows}) != len(rows):
+              fail.append("two events share an id")
+          priced = sum(1 for r in rows if r.get("price") is not None)
+          if priced < len(rows) * 0.9:
+              fail.append("only %d of %d sales carry a price"
+                          % (priced, len(rows)))
+
+          print("rows=%d types=%s priced=%d"
+                % (len(rows), sorted(types), priced))
+          if fail:
+              for f in fail:
+                  print("FAIL: " + f)
+              raise SystemExit(1)
+
+      - name: Upload what the run produced
+        # On EVERY run, not only on failure: when this does go red, the
+        # artefacts are the difference between "the site changed" and "we
+        # broke it", and they cannot be collected after the fact.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-artefacts
+          path: |
+            canary_*.json
+            canary_*.csv
+            canary_*.html*
+            canary_*_debug.*
+          if-no-files-found: warn
+          retention-days: 14

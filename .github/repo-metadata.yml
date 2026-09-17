@@ -1,0 +1,48 @@
+# What this repository publishes ABOUT ITSELF, kept here so it can be checked.
+#
+# GitHub's description, topics and homepage are the first thing anyone reads,
+# and they are the one surface the offline suite could not see: it scans
+# FILES, and a description lives behind an API. That gap is not hypothetical.
+# A sibling repo's description shipped carrying the very wording §12 bans for
+# the Scraping Browser API, copied out of the family template, and reached
+# two public repos before anyone noticed — because the suite scans repo files
+# and a GitHub description is not a file.
+#
+# So the intended values live here, where the suite's wording check scans
+# them like any other file, and the command below is what applies them. If
+# you change one, change it here first.
+#
+#   gh repo edit 2scraper/opensea-scraper \
+#     --description "$(sed -n 's/^description: //p' .github/repo-metadata.yml)" \
+#     --homepage "$(sed -n 's/^homepage: //p' .github/repo-metadata.yml)"
+#
+# And to see what is actually live, which is the only thing that counts:
+#
+#   gh repo view 2scraper/opensea-scraper \
+#     --json description,homepageUrl,repositoryTopics
+
+description: OpenSea NFT marketplace scraper (Playwright, Selenium, pyppeteer, or the 2Captcha Scraping Browser API via CDP) — floor prices, offers, sales history, traits, collection rankings, captcha solving, proxies
+
+homepage: https://2captcha.com
+
+# 10-15 of them, chosen for what THIS site is scraped for rather than copied
+# from the template. `floor-price` and `price-monitoring` both earn their
+# slots because an NFT collection's floor IS the number people watch, and
+# `nft-data` is what this output is called by the people who buy it. A topic
+# nobody would search for this site is a wasted slot out of fifteen.
+topics:
+  - opensea
+  - nft
+  - nft-marketplace
+  - nft-data
+  - floor-price
+  - web-scraping
+  - scraper
+  - price-monitoring
+  - playwright
+  - selenium
+  - puppeteer
+  - captcha-solver
+  - scraping-browser
+  - proxy
+  - fingerprints

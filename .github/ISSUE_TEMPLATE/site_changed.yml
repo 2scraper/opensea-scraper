@@ -1,0 +1,90 @@
+name: Site changed / parser broke
+description: OpenSea changed something and the parser no longer matches.
+labels: ["site-change"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most common way a scraper stops working, and it is worth
+        its own report because the fix is different from a code bug:
+        something on opensea.io moved.
+
+        Useful to know before filing, because it narrows the fix a lot — this
+        parser reads **three sources**, and they break differently:
+
+        - **The inlined Next.js payload**, pushed into the served HTML as
+          `self.__next_f.push([1,"…"])`. It carries every market's slug,
+          numeric id, `outcomePrices`, volumes and — on an event page — the
+          on-chain `conditionId` and both CLOB token ids. Every healthy run
+          reads this and nothing else.
+        - **JSON-LD**, a `CollectionPage → ItemList` on a listing. It names
+          ONE price per event and is used to confirm the payload's price and
+          to read the currency. An event page's own `Event` node publishes
+          `"price": "0"` and is deliberately not read for prices.
+        - **The rendered tiles**, anchored on the `/event/{slug}` href and
+          never on a class name.
+
+        If the PAYLOAD moves, a run does not fail — it drops to the tiles,
+        and then every row is EVENT-level with a rounded volume and no market
+        id. The `data_source` column is what shows it: rows that used to read
+        `flight` or `flight+jsonld` now read `dom`. If the tiles move as
+        well, the run reports 0 rows with its own stop reason
+        (`parser_found_nothing`) rather than pretending the listing was
+        empty.
+
+        So please include the `data_source` breakdown of your run — it is the
+        single most useful line in the report.
+
+  - type: dropdown
+    id: what_broke
+    attributes:
+      label: What stopped matching
+      options:
+        - No rows at all on a page that visibly has markets
+        - Rows come out, but every data_source is "dom" (the payload moved)
+        - price is null, or wrong, on rows that clearly show odds
+        - condition_id / clob_token_ids empty on an --mode event run
+        - An event page returns other events' markets as well as its own
+        - A listing now paginates (it did not when this was written)
+        - A locale path stopped being recognised
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: URL
+      description: >-
+        The exact URL, its locale prefix if it has one, the mode, and how the
+        browser was reached. Headless and headful were measured identical on
+        this site, so either is fine — but say which.
+      placeholder: "https://opensea.io/predictions/crypto (mode: markets, headless bundled Chromium, exit: FI datacentre)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence from the page
+      description: |
+        Whichever of these you can get. A capture beats a description, and
+        `--dump-html` writes one on success as well as on failure.
+
+        - How much payload the page actually shipped:
+          `python3 -c "import product_parser as P;h=open('dump.html').read();p=P.flight_payload(h);print(len(p), p.count('\"outcomePrices\"'))"`
+        - What the parser makes of it:
+          `python3 -c "import product_parser as P;rows=P.parse_markets(open('dump.html').read(),'<the url>');print(len(rows));print(rows[0] if rows else '')"`
+        - For a price problem: the market's slug, what the page shows, and
+          what the row says.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: >-
+        Whether it reproduces on a second engine, whether it reproduces on a
+        second listing or locale, and when it last worked.

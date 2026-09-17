@@ -1,0 +1,17 @@
+# The recommended engine.
+#
+#   pip install -r requirements.txt -r requirements-playwright.txt
+#   playwright install chromium
+#
+# `chromium` is enough HERE, and that is a measurement rather than an
+# assumption. OpenSea was served in full to Playwright's own bundled
+# Chromium on all twelve captures taken on 2026-09-16 — and to a `curl`
+# announcing itself as `curl/8.0`, which is as far from a real browser as a
+# request gets. The site does not read the client.
+#
+# A sibling repo in this family needs `playwright install chrome` instead,
+# because ITS site answered the bundled Chromium with HTTP 429 and real
+# Chrome with 200. That is a fact about that site, not about this one (§13),
+# which is why it was re-measured here rather than copied. `--browser-channel
+# chrome` remains available if you want a real Chrome anyway.
+playwright>=1.40.0

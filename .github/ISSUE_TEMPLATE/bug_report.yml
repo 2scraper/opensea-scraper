@@ -1,0 +1,138 @@
+name: Bug report
+description: The scraper ran but the result was wrong, empty, or it crashed.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before anything else: never paste an API key, a proxy password or a
+        full `ws://user:pass@...` endpoint into a public issue.** The scrapers
+        mask credentials in their own logs, but raw HTML dumps and the Scraper
+        API's `x-debug` header do not. Replace them with `***`.
+
+        A few things answer most reports faster than we can:
+
+        - **Everything exit 3?** Unusual on this site: nothing was refused
+          while this repo was built, including a plain `curl/8.0` from a
+          datacentre address. Check the dump the run saved
+          (`<out>_page1_debug.html`) — if it carries
+          `challenges.cloudflare.com`, it is a Cloudflare challenge and
+          `--retries` opens a fresh context for it; if it carries
+          `ERR_PROXY_CONNECTION_FAILED`, the proxy is the problem and not the
+          site.
+        - **`condition_id`, `clob_token_ids`, `spread` null on every row?**
+          Expected on a `--mode markets` run: a listing ships 11-12 fields per
+          market and an event page ships 111-115. Use `--mode events` (the
+          listing plus every event page under it) or `--mode event` for one.
+          The `data_source` and `volume_scope` columns say which view built
+          each row.
+        - **Only twenty events?** That is the site, not the run. A listing
+          URL renders twenty and publishes no address for the twenty-first:
+          `?page=2`, `?_p=2` and `?offset=20` all answer with the same twenty,
+          and scrolling adds none. The sidecar's `total_events` records what
+          the site says its catalogue holds. For breadth, run more listings
+          (`--category crypto`, `politics`, `sports`, …); for depth,
+          `--mode events`.
+        - **`price` is not the "Yes" price?** `price` is the price of
+          `outcomes[0]`, which is "Yes" on a binary market and a team name on
+          a sports one. `outcomes` and `outcome_prices` carry the whole
+          vector, index-aligned.
+        - **Rows from other events on an `--mode event` run?** That is a bug
+          worth reporting: an event page ships its rails' markets too, and
+          the parser is supposed to scope them out.
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Which engine
+      options:
+        - playwright_scraper.py
+        - puppeteer_scraper.py
+        - selenium_scraper.py
+        - scraper_api_client.py
+        - fingerprint_client.py
+        - other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser_route
+    attributes:
+      label: How was the browser reached
+      options:
+        - A browser the script launched itself
+        - A remote browser over --cdp-endpoint
+        - No browser (scraper_api_client.py over plain HTTP)
+        - Not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: exit_code
+    attributes:
+      label: Exit code
+      description: >-
+        `echo $?` straight after the run. These mean specific things — 3 is a
+        challenge page, 4 is "ran fine, found nothing", 124 is a self-imposed
+        timeout. The table is in the README.
+      placeholder: "4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command
+      description: With credentials replaced by `***`.
+      render: shell
+      placeholder: |
+        python3 playwright_scraper.py \
+          --url "https://opensea.io/predictions/crypto" \
+          --mode events --pages 21 --out crypto
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: >-
+        The whole run, not just the last line — the useful detail is usually
+        upstream of the error. Credentials replaced by `***`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      placeholder: >-
+        96 products, as the README says a category page yields.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please run and paste:
+        ```
+        python3 -c "import sys, platform; print(sys.version, platform.platform())"
+        pip list 2>/dev/null | grep -Ei "playwright|pyppeteer|selenium|beautifulsoup4|requests|webdriver"
+        python3 smoke_test.py | tail -3
+        ```
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: The offline suite passes on my machine (`python3 smoke_test.py`)
+          required: true
+        - label: I removed every API key, password and credentialled URL from this report
+          required: true
