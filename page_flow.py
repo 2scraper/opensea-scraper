@@ -378,10 +378,12 @@ def block_advice(html: Optional[str], headless: bool, has_pool: bool) -> str:
                      "site, so --headful is worth trying but is not the known "
                      "fix it is on some sibling sites")
     if not has_pool:
-        hints.append("this site served a plain datacentre address on every "
-                     "attempt measured, so a refusal is more likely to be the "
-                     "request RATE than the address: raise --delay before "
-                     "reaching for --proxy-file")
+        hints.append("this site served every address measured — a Finnish "
+                     "datacentre, a US Scraping Browser exit, a GitHub "
+                     "runner and a Russian residential exit — so a refusal "
+                     "is more likely to be the request RATE than the "
+                     "address: raise --delay before reaching for "
+                     "--proxy-file")
     else:
         hints.append("with a pool in play, raise --delay before raising the "
                      "request rate: N exits still means N times the traffic")

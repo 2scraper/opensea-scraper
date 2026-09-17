@@ -35,10 +35,33 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   it passed for the wrong reason, having only ever run against pages fetched
   with a plain client.
 
+- **The proxy path, run for the first time**, which was the last credentialled
+  path §16 asks for and the one that had never been exercised. Through a
+  2Captcha residential exit (the global mix, which came out in RU rather than
+  the EU its hostname suggests): Playwright 250 rows over 3 pages with one
+  timeout retried and recovered; pyppeteer 50 rows through
+  `page.authenticate`; Selenium warning that it cannot send proxy
+  credentials, stripping them and failing — the documented limitation
+  verified rather than asserted; and pool rotation from a dead exit to a live
+  one, with `ERR_PROXY_CONNECTION_FAILED` recognised as a proxy fault rather
+  than a timeout.
+
+  The check worth having a real credential for: **the password appears in no
+  process command line**, verified with `ps` mid-run. The browser is given
+  `--proxy-server=http://eu.proxy.2captcha.com:2334` — host and port only.
+  That is §3's central promise, checked against a live secret instead of a
+  fixture.
+
+  The data did not move: 250 of 250 rows identical to the Finnish datacentre
+  and US Scraping Browser runs, on 12 stable columns each. Four unrelated
+  networks now return the same rows for the same URL.
+
 ### Changed
 
 - The challenge-marker comment in `product_parser.py` and the README now
   carry THIS site's measurement rather than a sibling's.
+- `page_flow.block_advice` names the four networks this site has actually
+  been measured serving, instead of "a plain datacentre address".
 
 ## [0.1.0] - 2026-09-17
 

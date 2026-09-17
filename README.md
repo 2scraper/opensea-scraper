@@ -283,11 +283,35 @@ Nothing above needed a key. These do:
 
 | you want | what to use |
 |---|---|
-| many addresses, or one specific country | `--proxy` / `--proxy-file`, a [2Captcha proxy](https://2captcha.com/proxy) |
+| many addresses, or one specific country | `--proxy` / `--proxy-file`, a [2Captcha proxy](https://2captcha.com/proxy) — measured below |
 | no browser on your machine at all | `scraper_api_client.py` — one request, `$0.0005`, measured 200/50 rows in 5.0s |
 | a browser you do not run, with persistent cookies | `--cdp-endpoint`, the Scraping Browser API — measured below |
 | a consistent device identity | `--fingerprint` |
 | the day Cloudflare issues its managed challenge | `--solve-captcha` (the default already solves when blocked) |
+
+### The proxy path, measured
+
+Run through a 2Captcha residential exit on 2026-09-17 — the global mix, which
+came out in **RU** (`AS24955`) rather than the EU its hostname suggests:
+
+| | |
+|---|---|
+| Playwright, 3 pages | 250 rows, exit 0; one page-load timeout retried and succeeded |
+| pyppeteer | 50 rows — credentials go through `page.authenticate` |
+| Selenium | warns that it CANNOT send proxy credentials, strips them, and the run then fails — the documented limitation, verified rather than asserted |
+| pool rotation | a dead exit first, the live one second: `ERR_PROXY_CONNECTION_FAILED` recognised as a proxy fault rather than a timeout, rotated, fresh browser, 150 rows, exit 0 |
+| **the password in any process command line** | **absent** — checked with `ps` mid-run against a real secret; the browser was given `--proxy-server=http://eu.proxy.2captcha.com:2334`, host and port only |
+
+That last row is the one worth having a real credential for. §3 promises a
+secret never reaches `argv`, where anything that can run `ps` could read it;
+Playwright is handed the credentials through its own proxy fields instead.
+It is now checked with a live password rather than a fixture.
+
+**The data did not change.** 250 of 250 rows identical to the Finnish
+datacentre run and to the US Scraping Browser run, on 12 stable columns each.
+That makes four unrelated networks — a Finnish datacentre, a US cloud
+browser, a GitHub runner and a Russian residential exit — returning the same
+rows for the same URL.
 
 ### The Scraping Browser path, measured
 
