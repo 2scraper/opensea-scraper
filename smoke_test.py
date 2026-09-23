@@ -1790,6 +1790,54 @@ def test_x_debug_header_is_redacted():
                 "x-debug: the log line calls the redactor")
     return ok
 
+def test_scraper_api_payload_and_status():
+    """Measured 2026-09-23 against the live Scraper API: `waitFor` sent as
+    a JSON-encoded string is answered HTTP 422 and still billed, and the
+    response's `status` is the API's own "success" while the target's code
+    is `http_code`. Drive the real fetch_html with requests.post stubbed:
+    no network, no key spent."""
+    try:
+        import scraper_api_client as sac
+    except ImportError:
+        return False
+
+    captured = {}
+
+    class _Resp:
+        status_code = 200
+        headers = {}
+        text = ""
+
+        def json(self):
+            return {"status": "success", "http_code": 403,
+                    "headers": {}, "body": "<html></html>"}
+
+    def fake_post(url, **kw):
+        captured.update(kw.get("json") or {})
+        return _Resp()
+
+    real_post, real_argv = sac.requests.post, sys.argv
+    sac.requests.post = fake_post
+    sys.argv = ["scraper_api_client.py", "--key", "k" * 8,
+                "--url", 'https://opensea.io/collection/boredapeyachtclub',
+                "--wait-text", 'Bored Ape']
+    try:
+        _html, status = sac.fetch_html(sac.parse_args())
+    finally:
+        sac.requests.post, sys.argv = real_post, real_argv
+
+    ok = True
+    # This suite's check() takes (condition, message) -- the reverse of the
+    # family's (label, condition). Written the family way, the non-empty
+    # label would be the condition and the check could never fail.
+    ok &= check(captured.get("waitFor") == {"text": 'Bored Ape'},
+                "scraper API: waitFor is sent as an object, not a JSON string")
+    ok &= check(status == 403,
+                "scraper API: the target status comes from http_code (403), "
+                "not the API's own 'success'")
+    return ok
+
+
 
 def main():
     print("opensea-scraper offline smoke tests")
@@ -1838,6 +1886,7 @@ def main():
     ok &= test_sample_output()
     ok &= test_no_dead_policy_constants()
     ok &= test_x_debug_header_is_redacted()
+    ok &= test_scraper_api_payload_and_status()
     ok &= test_engine_modules_import(skips)
 
     passed = _total_checks - len(_failures)
