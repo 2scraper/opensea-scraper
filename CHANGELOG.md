@@ -63,6 +63,9 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 - `page_flow.block_advice` names the four networks this site has actually
   been measured serving, instead of "a plain datacentre address".
 
+- `SECURITY.md` said this project has no releases or version tags; it has
+  both. "Supported versions" now names the latest release and `main`.
+
 ## [0.1.0] - 2026-09-17
 
 First release. Scrapes opensea.io into JSON or CSV from three views, with
