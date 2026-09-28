@@ -63,6 +63,9 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 - `page_flow.block_advice` names the four networks this site has actually
   been measured serving, instead of "a plain datacentre address".
 
+- `SECURITY.md` said this project has no releases or version tags; it has
+  both. "Supported versions" now names the latest release and `main`.
+
 ### Fixed
 
 - **The Scraper API path sent `waitFor` in a form the live API rejects,
@@ -78,7 +81,6 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   that is an integer). Pinned by an offline check that drives the real
   client with `requests.post` stubbed; verified by control (red with the
   old client).
-
 
 ## [0.1.0] - 2026-09-17
 
