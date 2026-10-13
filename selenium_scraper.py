@@ -146,6 +146,10 @@ class PageOutcome:
     totals: Optional[dict] = None
     gap: Optional[int] = None
     ssr_dropped: int = 0
+    # Whether page 1's own rows were USED: false when the request
+    # does not match what the page renders, and false when the page
+    # shipped no state at all (a site change, not a request).
+    ssr_used: bool = False
     scroll: Optional[dict] = None
 
     @property
@@ -205,6 +209,7 @@ class _Session:
                     "will go out unauthenticated and the exit will most "
                     "likely refuse them. Use playwright_scraper.py or "
                     "puppeteer_scraper.py for an authenticated proxy.")
+                self.credentials_stripped = True
 
         # Chrome's performance log, which is how this engine learns a
         # response's STATUS and counts refused responses — the other two get
@@ -464,7 +469,9 @@ fetch(endpoint, {
   credentials: 'include'
 }).then(function (response) {
   return response.text().then(function (text) {
-    done({status: response.status, text: text});
+    done({status: response.status,
+          retry_after: response.headers.get('retry-after'),
+          text: text});
   });
 }).catch(function (e) {
   done({status: 0, text: '', error: String(e)});
@@ -485,7 +492,21 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
         sort=args.sort, ranking=args.ranking, timeframe=args.timeframe,
         activity_filter=args.activity)
 
-    for attempt in range(1, args.retries + 1):
+    # TWO INDEPENDENT BUDGETS, and keeping them independent is the whole
+    # point (§24). `attempt` counts TRANSPORT faults against `--retries`,
+    # which is the caller's allowance for things going wrong. A throttle is
+    # not one of those: it is the site asking us to slow down, the exit is
+    # fine, and waiting is the answer — so a throttle wait does not consume a
+    # transport attempt.
+    #
+    # The first version of this fix used `continue` on a `for` loop over
+    # `--retries`, which silently capped the throttle budget at the transport
+    # one: with `--retries 2` a three-wait throttle policy got two waits. The
+    # offline check that drives this loop with a fake driver caught it.
+    throttled = 0
+    attempt = 0
+    while attempt < args.retries:
+        attempt += 1
         try:
             result = session.driver.execute_async_script(
                 GRAPHQL_FETCH_JS, GRAPHQL_ENDPOINT, body)
@@ -530,7 +551,36 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
             outcome.final_url = _current_url(session)
             return outcome
 
-        if status in (403, 429, 503):
+        if page_flow.is_throttle(status):
+            # A THROTTLE, not a refusal, and the two want opposite responses
+            # (§24). Waiting at the SAME exit is the answer; rotating away
+            # would spend the block budget and an exit on a page that was
+            # about to come back. Its own budget, so that `--retries` — the
+            # caller's allowance for transient faults — is not quietly
+            # consumed by the site asking us to slow down.
+            throttled += 1
+            if throttled <= page_flow.THROTTLE_RETRIES:
+                pause = page_flow.throttle_wait(
+                    throttled, (result or {}).get("retry_after"))
+                logger.warning(
+                    "Page %d: the endpoint answered HTTP %d — a throttle "
+                    "rather than a refusal, so waiting %.1fs and asking the "
+                    "SAME exit again (%d/%d).",
+                    page_num, status, pause, throttled,
+                    page_flow.THROTTLE_RETRIES)
+                time.sleep(pause)
+                attempt -= 1          # a throttle is not a transport fault
+                continue
+            logger.error(
+                "Page %d: still throttled (HTTP %d) after %d wait(s). This "
+                "is not a block — the exit is fine and the rate is not — so "
+                "it is reported as a failed page rather than exit 3. Raise "
+                "--delay.", page_num, status, page_flow.THROTTLE_RETRIES)
+            outcome.load_failed = True
+            outcome.state = "throttled"
+            return outcome
+
+        if page_flow.is_refusal(status):
             logger.error("Page %d: the endpoint answered HTTP %d.",
                          page_num, status)
             outcome.blocked_by = "endpoint-http-%d" % status
@@ -788,7 +838,9 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
              else f" Re-fetched {block_retries + 1} time(s)."))
         logger.error("%s", page_flow.block_advice(
             html, headless=bool(getattr(args, "headless", False)),
-            has_pool=has_pool))
+            has_pool=has_pool,
+            credentials_stripped=getattr(session, "credentials_stripped",
+                                         False)))
         outcome.blocked_by = vendor or ("no-response" if not html else "bot-or-not")
         outcome.final_url = _current_url(session)
         return outcome
@@ -824,9 +876,25 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
     logger.info("Parsed %d row(s) from page 1.", len(rows))
 
     outcome.totals = page_flow.collection_totals_on_page(html or "") or None
-    if args.ssr_usable:
+    # TWO conditions, and the second is the one a site change breaks.
+    # `args.ssr_usable` is about the REQUEST (does this run ask the question
+    # the page renders, §21); `state_answered` is about the RESPONSE (did the
+    # page inline its rows at all). Measured 2026-10-13: opensea.io stopped
+    # shipping `urql_transport` on the ranking and the activity feed, and
+    # without the second condition the run kept page 1's DOM-fallback rows —
+    # an address and a name, every price null — and reported complete.
+    state_answered = page_flow.state_answered(html or "", args.mode)
+    outcome.ssr_used = bool(args.ssr_usable and state_answered)
+    if outcome.ssr_used:
         outcome.products = rows
         outcome.next_cursor = next_cursor(html or "", args.mode)
+    elif args.ssr_usable:
+        outcome.ssr_dropped = len(rows)
+        logger.warning(
+            "Page 1 did not inline its rows for --mode %s, so its %d "
+            "fallback row(s) are dropped and the feed starts from the "
+            "endpoint instead. That is a change in what the SITE ships, not "
+            "a fault here.", args.mode, len(rows))
     else:
         # The rows page 1 rendered answer a DIFFERENT question than this run
         # is asking, and its cursor belongs to that other ordering (§21).
@@ -920,10 +988,13 @@ def scrape(args) -> int:
         else:
             cursor = first.next_cursor
             rank_seen = len(first.products)
-            last_page = args.pages + (0 if args.ssr_usable else 1)
+            last_page = args.pages + (0 if first.ssr_used else 1)
             # A null cursor means the START of the feed where page 1's rows
             # were dropped, not the end of it. See the primary engine.
-            feed_started = args.ssr_usable
+            # Keyed on what page 1 actually DID, not on what the
+            # request implied: a page that stopped inlining its
+            # state leaves the feed unstarted.
+            feed_started = first.ssr_used
             for page_num in range(2, last_page + 1):
                 if page_flow.page_cap_reached(page_num):
                     logger.warning("Stopping at the %d-page cap.", PAGE_CAP)
@@ -970,6 +1041,17 @@ def scrape(args) -> int:
                     break
                 rank_seen += len(outcome.products)
                 cursor = outcome.next_cursor
+
+                # The DATA-side half of the price boundary (§7). The
+                # cursor's null key is the cheap signal and it belongs to
+                # the site's internals — an error in September, paging fine
+                # in October. A page with not one priced row is a fact about
+                # the catalogue and says the same thing.
+                if page_flow.prices_ran_out(outcome.products, args.sort):
+                    stop_reason = "listed_items_exhausted"
+                    logger.info("%s", page_flow.sort_note(
+                        args.sort, rank_seen, first.totals))
+                    break
             else:
                 if args.pages > 1 and cursor:
                     logger.info("Fetched the %d page(s) asked for and the "
@@ -982,6 +1064,24 @@ def scrape(args) -> int:
         [(o.page_num, o.products) for o in outcomes], key="sku")
 
     totals = next((o.totals for o in outcomes if o.totals), None)
+
+    # A run built ENTIRELY out of the DOM fallback is a degraded read, and
+    # saying so is the whole point of carrying `data_source` as a column
+    # (§8: never present a guess as a fact). The rows are real and the
+    # prices are not there at all, so this is neither a block nor an empty
+    # result — it is a complete-looking file holding a worse answer, and it
+    # gets its own stop reason so a reader lands on the parser rather than
+    # on their own URL.
+    if page_flow.degraded_to_dom(all_rows):
+        stop_reason = page_flow.DEGRADED_STOP_REASON
+        logger.error(
+            "Every one of the %d row(s) came from the DOM fallback, which "
+            "carries an address and a name and NO prices. The site's own "
+            "inlined state did not parse and the endpoint did not answer "
+            "either. This is reported rather than written off as a complete "
+            "run: re-run with --dump-html and open an issue with the "
+            "snapshot.", len(all_rows))
+
     if all_rows:
         note = page_flow.totals_note(totals, len(all_rows))
         if note:
@@ -1011,6 +1111,19 @@ def scrape(args) -> int:
         "rows_from_dom": sum(1 for r in all_rows if r.data_source == "dom"),
         "rows_dropped_from_page_1": sum(o.ssr_dropped for o in outcomes),
         "pagination": "cursor",
+        # WHERE THIS RUN STOPPED, so a long walk does not have to start over.
+        # Not a checkpoint/resume feature — a third-party audit asked for one
+        # on 2026-10-13 and that is a product decision the family has
+        # deferred (it needs atomic partial writes and a resume flag). This
+        # is the one fact such a feature would need and that only the run can
+        # know, recorded so the information is not thrown away: the cursor
+        # the site handed back after the last page that landed.
+        #
+        # Null when the feed ended, when a price-ordered walk reached the end
+        # of the listed items, or when nothing was fetched — in each of those
+        # there is nothing to resume from.
+        "last_cursor": next((o.next_cursor for o in reversed(outcomes)
+                             if o.ok and o.next_cursor), None),
     }
 
     return finish_run(all_rows, args.out, args.format, args.allow_empty,
@@ -1072,7 +1185,7 @@ def parse_args():
                    help="Accepted for the family's shape and REFUSED above 1, "
                         "with the reason: page 5's request does not exist "
                         "until page 4 has been read.")
-    p.add_argument("--retries", type=int, default=3,
+    p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3).")
     p.add_argument("--retry-delay", type=float, default=2.0,
                    help="Seconds before the first retry, doubling thereafter "
@@ -1139,6 +1252,13 @@ def parse_args():
                    help="Accepted for parity with the other engines; "
                         "chromedriver attaches to `debuggerAddress` without a "
                         "connect timeout of its own.")
+    p.add_argument("--verbose", action="store_true",
+                   help="Re-raise a driver error instead of reporting it as "
+                        "a one-line environment problem. The default turns "
+                        "'the browser would not start' into exit 2 with an "
+                        "install hint, because a traceback through a driver "
+                        "the reader did not write says 'there is a bug here' "
+                        "when there is not.")
     p.add_argument("--dump-html", default=None, metavar="PATH",
                    help="Save exactly what the parser is given. Page 1 as "
                         "HTML; every cursor page as `<path>.pageN.json`.")
@@ -1225,3 +1345,14 @@ if __name__ == "__main__":
     except ProxyError as e:
         logger.error("%s", e)
         sys.exit(2)
+    except Exception as e:                       # noqa: BLE001
+        # The BROWSER not starting is neither a crash in this code (exit 1)
+        # nor the site refusing us (exit 3). Exit 2 with one actionable
+        # line; --verbose re-raises for the driver's own stack. Anything
+        # else still propagates.
+        if page_flow.is_launch_failure(e):
+            logger.error("%s", page_flow.launch_failure_advice(e))
+            if getattr(args, "verbose", False):
+                raise
+            sys.exit(2)
+        raise

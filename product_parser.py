@@ -990,14 +990,24 @@ def graphql_data(payload: Any, mode: str = "items") -> Optional[dict]:
 #   the collections ranking  [50]
 #
 # When a price-ordered walk crosses from listed items into unlisted ones that
-# first element becomes `null`, and the request that passes such a cursor
-# back answers `{"errors":[{"message":"Something went wrong"}]}`. Measured on
-# boredapeyachtclub, 2026-09-17: three pages of 100, 282 of the 300 listed,
-# then the null key and the error.
+# first element becomes `null`. Recognising it here lets a floor scrape stop
+# where the prices stop, which is what a price-ordered walk is for.
 #
-# Recognising it HERE, before spending the request, is what turns that from
-# a run-ending error into a clean stop: the run has every item that has a
-# price, which is what a price-ordered walk is for.
+# WHAT THIS USED TO SAY, AND WHY THE CORRECTION IS LEFT HERE (§13). Measured
+# on boredapeyachtclub 2026-09-17: three pages of 100, 282 of the 300
+# listed, then a null key — and passing that cursor back answered
+# `{"errors":[{"message":"Something went wrong"}]}`. The stop was written as
+# "recognise it before the request is spent", and the README, the CHANGELOG
+# and three engines all said so.
+#
+# Re-measured 2026-10-13: the same cursor PAGES NORMALLY. A walk went 1,000
+# rows deep with no error, and pages 4 to 10 — seven hundred rows — carried
+# zero priced items. OpenSea fixed their end. The stop is unchanged because
+# the fact it stood for is unchanged, but it no longer rests on an error
+# message: `page_flow.prices_ran_out` reads the rows instead, which is §7's
+# rule that a terminating condition belongs to the catalogue rather than to
+# the transport. A captured response for both behaviours is pinned in the
+# fixtures under `_endpoint_edges`.
 def cursor_key_is_null(cursor: Optional[str]) -> bool:
     """Whether this cursor's sort key is null — the end of the listed items."""
     if not cursor:

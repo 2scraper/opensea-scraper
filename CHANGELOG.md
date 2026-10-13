@@ -14,6 +14,89 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 
 ## [Unreleased]
 
+> **If you script this scraper: `--retries 0` is now a usage error (exit 2).**
+> It used to be accepted and to mean "never fetch the page" — the load loop
+> is `range(1, retries + 1)` — so a run passing it classified the empty
+> document as a refusal and exited 3. A third-party audit did exactly that
+> on 2026-10-13 and reported the site as unavailable while it was serving
+> 250 rows to the same machine a minute later.
+
+### Fixed
+
+- **Two of the three modes had silently degraded, and the run still said
+  `complete`.** Between 2026-09-17 and 2026-10-13 OpenSea stopped inlining
+  its state on the ranking and on the activity feed; both now render
+  client-side, and only a collection page still ships its rows. The engines
+  kept page 1's rows anyway, got them from the DOM fallback — an address and
+  a name, every price null — and reported exit 0 with **23** and **24** rows
+  against the **160** and **200** the endpoint served the same minute.
+  `data_source` read `dom` on every row, which is that column working
+  exactly as designed; nothing acted on it.
+
+  Page 1's rows are now used only when the page actually inlined some, so a
+  mode that stops inlining is handled by the path that already existed for a
+  request the page does not answer: page 1 becomes proof-of-service and
+  totals, and the feed starts from the endpoint. Re-measured after the fix:
+  `items` 250, `collections` 161, `activity` 300.
+
+  And a run that is nonetheless built entirely out of the fallback now says
+  so, is no longer `complete`, and all three canary jobs assert the route
+  mix instead of only the first — which is the gap that let this reach a
+  release. The items job had the assertion and would have gone red; the
+  other two did not.
+
+- **`--retries 0` skipped navigation entirely** (see the note above). It is
+  refused at parse time by a shared guard, so all three engines answer the
+  same way, and the suite pins it per engine by reading the source rather
+  than through an import — a check gated behind importing the engine skips
+  for exactly the engines whose driver is absent.
+
+- **A throttle is no longer treated as a block.** 429 and 503 want the
+  opposite response to a 403: the exit is fine and the rate is not, so the
+  answer is the same exit and a longer wait. They now have their own budget,
+  separate from `--retries`, and honour a `Retry-After` the server sends —
+  the in-page fetch had to start returning that header for it to be
+  anything but dead code. *No throttle has ever been seen on this site*: the
+  endpoint's `x-ratelimit-remaining` reads 399 and, measured 2026-10-13, did
+  not move across a burst of 60 requests. This path is implemented and
+  unexercised here, and it is driven offline against a fake driver for that
+  reason.
+
+- **A browser that will not start is exit 2, not a traceback.** A missing
+  Chromium or a sandbox refusal is neither a bug here nor the site refusing
+  us; it now reports one actionable line, with `--verbose` to re-raise the
+  driver's own stack.
+
+### Changed
+
+- **The price-boundary stop now rests on the data, not on an error.** On
+  2026-09-17 passing a null-sort-key cursor back answered
+  `{"errors":[{"message":"Something went wrong"}]}`, and the stop was built
+  on that. On 2026-10-13 the same cursor pages normally — a walk went 1,000
+  rows deep, and pages 4 to 10 carried zero priced items. OpenSea fixed
+  their end. The behaviour is unchanged, because a floor scrape should still
+  stop where the prices stop, but it is now keyed on a page with no priced
+  row (§7: a terminating condition is a property of the catalogue, not of
+  the transport). Every copy of the old claim in the code and the docs has
+  been corrected rather than quietly dropped.
+
+- `complete` under `--sort price` now says in the log what it is complete
+  FOR: the feed does not end at the boundary, and `--sort created` walks on.
+
+### Added
+
+- **Captured endpoint responses as fixtures** — an invalid cursor, the
+  null-key cursor, an unknown collection, a schema validation error. All
+  four come back **HTTP 200**, so a caller branching on the status alone
+  reads every one of them as success. Captured from the live endpoint rather
+  than assembled, which is what dates the null-key one and makes the
+  correction above checkable.
+- `last_cursor` in the run sidecar: where the walk stopped, so the one fact
+  a resume would need is not thrown away. Not a resume feature — that needs
+  atomic partial writes and a flag, and is a product decision.
+- `--verbose`, on all three engines.
+
+
 ### Added
 
 - **A Scraping Browser fixture, and the check that needed it.** The

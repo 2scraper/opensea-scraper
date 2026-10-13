@@ -50,6 +50,7 @@ OPERATION and each engine spells it in its own driver's dialect.
 
 from __future__ import annotations
 
+import argparse
 import logging
 from typing import Callable, Dict, List, Optional
 
@@ -346,7 +347,136 @@ SOLVES_PER_PAGE = 1
 RETRY_NEEDS_FRESH_CONTEXT = True
 
 
-def block_advice(html: Optional[str], headless: bool, has_pool: bool) -> str:
+# ---------------------------------------------------------------------------
+# A throttle is not a block
+# ---------------------------------------------------------------------------
+# §24's lesson, carried here from a sibling site that could measure it: a
+# refusal and a throttle want OPPOSITE responses. A block says "this exit is
+# unwelcome", so the answer is a different exit. A throttle says "too fast",
+# so the answer is the SAME exit and a longer wait — rotating away from it
+# spends the block budget and an exit rotation on a page that was about to
+# come back, and reports exit 3 to a reader who then goes and buys a proxy
+# they do not need.
+#
+# WHAT IS AND IS NOT MEASURED HERE. OpenSea's endpoint publishes an
+# `x-ratelimit-remaining` header, which reads 399 and — measured 2026-10-13
+# — does not move: a burst of 60 requests in a few seconds returned HTTP 200
+# sixty times with the counter unchanged at 399 every time, and no
+# `retry-after` on any of them. So no throttle has ever been reached from
+# here, and this path is IMPLEMENTED AND UNEXERCISED on this site, in the
+# same sense as the captcha path. That is a statement about this repo's
+# testing, not a claim that the endpoint has no limit: a counter that does
+# not move is a counter that is not telling us anything, which is a reason to
+# handle the status correctly rather than a reason to assume it cannot
+# arrive.
+#
+# A third-party audit on 2026-10-13 asked for a cooldown policy keyed on the
+# KIND of response. This is that, narrowed to the distinction the family has
+# actually measured elsewhere.
+THROTTLE_STATUSES = (429, 503)
+BLOCK_STATUSES = (403,)
+
+# Its OWN budget, separate from `--retries`. `--retries` is the caller's
+# budget for transient faults; spending it on a throttle means a page that
+# would have come back is reported as a failure instead.
+THROTTLE_RETRIES = 3
+# The first wait, doubling thereafter. Deliberately longer than the
+# transport retry's: a throttle is answered by waiting, not by trying again
+# promptly.
+THROTTLE_BASE_SECONDS = 5.0
+# A server asking for longer than this is not something to sit through
+# inside one page fetch.
+THROTTLE_MAX_SECONDS = 120.0
+
+
+def is_throttle(status) -> bool:
+    """Whether this status means "too fast" rather than "not you"."""
+    return status in THROTTLE_STATUSES
+
+
+def is_refusal(status) -> bool:
+    """Whether this status means the request was refused outright."""
+    return status in BLOCK_STATUSES
+
+
+def throttle_wait(attempt: int, retry_after=None,
+                  base: float = THROTTLE_BASE_SECONDS) -> float:
+    """How long to wait before asking the same exit again.
+
+    `retry_after` is the server's own answer and WINS when it gives one —
+    guessing over a number the other side stated is how a client gets its
+    budget cut further. It arrives as a header value, so it may be a string,
+    may be a date rather than a count of seconds (unparsed here: the
+    date form is rare on an API and a wrong parse would be worse than the
+    fallback), or may be absent.
+
+    Capped, because a run should report a long throttle rather than sit
+    through it silently.
+    """
+    seconds = None
+    if retry_after is not None:
+        try:
+            seconds = float(str(retry_after).strip())
+        except (TypeError, ValueError):
+            seconds = None
+    if seconds is None or seconds <= 0:
+        seconds = base * (2 ** max(0, attempt - 1))
+    return min(float(seconds), THROTTLE_MAX_SECONDS)
+
+
+# Errors that mean "the browser never started", as opposed to "the site
+# refused us". A missing Chromium, a sandbox that will not let one run, a
+# driver that cannot be launched — none of these is a fault of this code or
+# of the site, and all three used to reach the user as a traceback and exit
+# 1, which says "there is a bug here" to anyone reading exit codes.
+#
+# Raised by a third-party audit on 2026-10-13, whose own first attempt died
+# this way under a macOS sandbox (`MachPortRendezvousServer: Permission
+# denied`). They correctly called it an environment limit; the scraper
+# should have said so itself.
+_LAUNCH_FAILURE_MARKERS = (
+    "executable doesn't exist",
+    "please run the following command to download new browsers",
+    "playwright install",
+    "browsertype.launch",
+    "machportrendezvousserver",
+    "no usable sandbox",
+    "failed to launch",
+    "chrome not reachable",
+    "cannot find chrome binary",
+    "session not created",
+)
+
+
+def is_launch_failure(error) -> bool:
+    """Whether this error means the BROWSER never started."""
+    text = str(error or "").lower()
+    return any(marker in text for marker in _LAUNCH_FAILURE_MARKERS)
+
+
+def launch_failure_advice(error) -> str:
+    """What to do about a browser that would not start.
+
+    Short on purpose: the full traceback is a stack through a driver the
+    reader did not write, and the actionable part is one line.
+    """
+    text = str(error or "")
+    hint = ("Install the browser this engine drives — `playwright install "
+            "chromium` for the Playwright engine, a matching chromedriver "
+            "plus Chrome for Selenium, or `--chromium-path` for pyppeteer.")
+    if "sandbox" in text.lower() or "machport" in text.lower():
+        hint = ("The operating system refused to let a browser start. That "
+                "is usually a sandbox or a container without the privileges "
+                "Chromium needs — try outside it, or pass --cdp-endpoint to "
+                "drive a browser somewhere else.")
+    return ("the browser did not start, so nothing was fetched and this is "
+            "not a site problem: %s\n%s"
+            % (text.strip().splitlines()[0][:300] if text.strip() else
+               "no detail given", hint))
+
+
+def block_advice(html: Optional[str], headless: bool, has_pool: bool,
+                 credentials_stripped: bool = False) -> str:
     """What a reader should actually DO about this block.
 
     Says what is measured and says what is not. The temptation is to repeat a
@@ -358,6 +488,23 @@ def block_advice(html: Optional[str], headless: bool, has_pool: bool) -> str:
     marker = detect_block_marker(html or "") or "no vendor marker"
     lead = f"blocked ({marker})"
     hints: List[str] = []
+
+    # SAY WHAT WAS OBSERVED BEFORE SAYING WHY (§28). When the engine itself
+    # stripped the proxy credentials it knows the likeliest cause, and the
+    # general advice below — raise --delay, try --headful — points a reader
+    # away from it. Measured 2026-10-13: Selenium with an authenticated
+    # proxy produced a 39-byte empty document on every attempt and the same
+    # three modes succeeded through the same proxy on the two engines that
+    # CAN authenticate.
+    if credentials_stripped:
+        return (f"{lead}. This engine STRIPPED the proxy credentials before "
+                f"launching — it has no way to send them — so the exit "
+                f"almost certainly refused the request and the browser never "
+                f"got a page: {len(html or '')} bytes came back. That is the "
+                f"documented Selenium limitation rather than the site "
+                f"refusing you. Use playwright_scraper.py or "
+                f"puppeteer_scraper.py for an authenticated proxy, or drop "
+                f"--proxy.")
 
     if is_challenge_page(html or ""):
         lead = f"blocked by a challenge page ({marker})"
@@ -393,6 +540,52 @@ def block_advice(html: Optional[str], headless: bool, has_pool: bool) -> str:
 # ---------------------------------------------------------------------------
 # Pagination — cursors, and the one that ends a walk early on purpose
 # ---------------------------------------------------------------------------
+def attempts(value) -> int:
+    """`--retries` as a number of ATTEMPTS, never zero.
+
+    Used as argparse's `type=`, so the refusal happens at parse time with a
+    usage message rather than four seconds into a run.
+
+    The bug this closes was found by a third-party audit on 2026-10-13, and
+    the audit was right about the symptom and wrong about the cause (§28).
+    Its live run passed `--retries 0`; the load loop is
+    `for attempt in range(1, args.retries + 1)`, so with 0 it never executes,
+    `goto` is never called, and the engine then classifies `about:blank` —
+    **39 bytes** — as a refusal. The audit reported "OpenSea returned 39
+    bytes with no vendor markers" and concluded availability was unproven.
+
+    Reproduced and settled here with one variable changed, which is §28's
+    rule:
+
+        --retries 0   exit 3, 39 bytes, four attempts, 37 s
+        --retries 1   exit 0, 1,395,922 bytes, 50 rows, 100% coverage, 11 s
+        defaults, 3 pages   exit 0, 250 rows, complete, 14 s
+
+    So the site was available throughout and the refusal was ours. Note the
+    two tells, both cheap and both general: a "refusal" that returns in
+    milliseconds is not a round trip, and 39 bytes is an empty DOM
+    (`<html><head></head><body></body></html>`) rather than anything a
+    server sent.
+
+    Zero is refused rather than clamped. Clamping would make `--retries 0`
+    mean `--retries 1`, which is a different lie: the flag would look
+    honoured and not be.
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            "--retries must be a whole number of attempts, got %r" % (value,))
+    if number < 1:
+        raise argparse.ArgumentTypeError(
+            "--retries must be at least 1: it counts ATTEMPTS, not extra "
+            "tries, so 0 would mean 'never fetch the page'. A run that never "
+            "navigates reports the empty document as a block (exit 3), which "
+            "is how a third-party audit came to report this site as "
+            "unavailable while it was serving normally.")
+    return number
+
+
 def page_cap_reached(page_num: int) -> bool:
     return page_num >= PAGE_CAP
 
@@ -407,8 +600,9 @@ def cursor_exhausted(cursor: Optional[str]) -> bool:
         signal any repo in this family has;
       * the cursor's sort key is null, which happens only under the price
         ordering and only at the boundary between listed and unlisted items.
-        Spending the request would answer `Something went wrong`; recognising
-        it here turns a run-ending error into a clean stop.
+        Everything sorted after that point has no price, so a floor scrape
+        is finished — see `price_boundary_reached`, whose docstring records
+        why this stop no longer rests on the error it originally did.
 
     `price_boundary_reached` tells the two apart for the log and the sidecar.
     """
@@ -418,15 +612,49 @@ def cursor_exhausted(cursor: Optional[str]) -> bool:
 def price_boundary_reached(cursor: Optional[str]) -> bool:
     """Whether the walk has reached the end of the LISTED items.
 
-    Measured on boredapeyachtclub, 2026-09-17: three pages of 100 under the
-    price ordering, 282 of those 300 carrying a listing, then a cursor whose
-    key is null. The collection page's own `listedItemCount` for the same
-    collection in the same minute was **282** — so the walk reaches exactly
-    the items that have a price and stops, which is what a price-ordered walk
-    is for. Two independent measurements of the same boundary agreeing is
-    what makes this a stop reason rather than a guess.
+    The cursor under the price ordering carries the last row's price, so a
+    null key means that row had none — and everything sorted after it has
+    none either. Stopping there is what a price-ordered walk is FOR: it is a
+    floor scrape, and the rows beyond the boundary are the unpriced
+    remainder of the collection in no particular order.
+
+    THE REASON FOR THIS STOP CHANGED, and the first version of it has
+    rotted, which is worth leaving written down (§13).
+
+    Measured 2026-09-17: passing such a cursor back answered
+    `{"errors":[{"message":"Something went wrong"}]}`, so this was written as
+    "recognise it before the request is spent", and the README, the
+    CHANGELOG and the engines all said so.
+
+    Re-measured 2026-10-13: the same cursor now paginates perfectly. A walk
+    went **1,000 rows** deep with no error at all — and pages 4 to 10, seven
+    hundred rows, carried **zero** priced items. OpenSea fixed their end.
+    The error is gone; the fact it stood for is not.
+
+    So the stop is unchanged and its justification is now the DATA rather
+    than an error message: see `prices_ran_out`, which the engines check
+    beside this. §7 says a terminating condition must be a property of the
+    catalogue rather than of the markup, and "the endpoint rejects this
+    cursor" was the markup.
     """
     return cursor_key_is_null(cursor)
+
+
+def prices_ran_out(rows, sort: str) -> bool:
+    """Whether this page proves the listed items are behind us.
+
+    The data-side half of the stop above, and the half that survives the
+    site changing its mind about the cursor. Under a price ordering a page
+    with not one priced row means the boundary was crossed on the page
+    before it, and §7 wants the terminating condition to be exactly this
+    kind of fact.
+
+    Only meaningful under a price ordering: under `created` an unpriced page
+    is the normal case and stopping on it would end every run at page 1.
+    """
+    if not rows or not str(sort).startswith("price"):
+        return False
+    return all(getattr(row, "price", None) is None for row in rows)
 
 
 def sort_note(sort: str, rows: int, totals: Optional[dict] = None) -> str:
@@ -450,11 +678,12 @@ def sort_note(sort: str, rows: int, totals: Optional[dict] = None) -> str:
         tail += "."
     return (f"Stopped at the end of the LISTED items: under --sort {sort} the "
             f"cursor carries the last row's price, and it goes null where the "
-            f"listed items end. The run holds {rows} row(s) and is COMPLETE — "
-            f"every item that has a price is in it, and the rest have none."
-            f"{tail} Use --sort created to walk the whole collection instead, "
-            f"which was measured going 800 items deep on the same collection "
-            f"without a stumble.")
+            f"listed items end. The run holds {rows} row(s) and is COMPLETE "
+            f"for the question --sort {sort} asks — every item that has a "
+            f"price is in it.{tail} The feed itself does NOT end here: "
+            f"measured 2026-10-13, it pages on for at least another 700 rows, "
+            f"all of them unpriced. Use --sort created to walk the whole "
+            f"collection in a defined order.")
 
 
 def totals_note(totals: Optional[dict], rows: int) -> Optional[str]:
@@ -495,6 +724,32 @@ def page_gap(html: Optional[str], parsed: int) -> Optional[int]:
     two must not read the same in a sidecar (§8).
     """
     return None
+
+
+def degraded_to_dom(rows) -> bool:
+    """Whether every row came from the DOM fallback.
+
+    The fallback exists so a site change does not cost the run everything,
+    and it emits an address and a name and NO prices (see
+    `product_parser.rows_from_dom`). So a file built entirely out of it has
+    the right columns, the right row count and no money in it — which is the
+    §8 failure this family keeps meeting: a tool doing less than it says
+    while reporting success.
+
+    Measured 2026-10-13, which is why this exists: opensea.io stopped
+    inlining its state on two of three page kinds, both modes fell through
+    to the fallback, and the runs reported `complete` with 23 and 24 rows
+    against the 160 and 200 the endpoint served the same minute. Every row
+    said `data_source: dom`. The column was right and nothing read it.
+
+    Rows with no `data_source` at all do not count as degraded — that is a
+    different fault and `parsed_nothing_from_a_served_page` is its check.
+    """
+    sources = {getattr(row, "data_source", None) for row in rows}
+    return bool(rows) and sources == {"dom"}
+
+
+DEGRADED_STOP_REASON = "degraded_to_dom"
 
 
 def parsed_nothing_from_a_served_page(html: Optional[str], rows: int) -> bool:

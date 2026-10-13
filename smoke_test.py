@@ -116,6 +116,18 @@ def fixture(name):
     return FIXTURES[name]
 
 
+def page_fixtures():
+    """The fixtures that are CAPTURED PAGES.
+
+    A key beginning with `_` is a different kind of record living in the
+    same file — `_endpoint_edges` holds captured endpoint RESPONSES, which
+    have no html, no skus and no page state. Walking them with the
+    page-fixture checks reads as a crash rather than as a failure.
+    """
+    return {name: data for name, data in FIXTURES.items()
+            if not name.startswith("_")}
+
+
 def html_of(name):
     return FIXTURES[name]["html"]
 
@@ -130,7 +142,7 @@ def test_fixtures_are_present():
                 "activity", "item", "notfound", "chromium_proxy_error")
     for name in expected:
         ok &= check(name in FIXTURES, "fixture %r is missing" % name)
-    for name, data in FIXTURES.items():
+    for name, data in page_fixtures().items():
         ok &= check(bool(data.get("html")), "fixture %r has no html" % name)
         ok &= check(bool(data.get("url")), "fixture %r has no url" % name)
         ok &= check(data.get("mode") in P.MODES,
@@ -155,7 +167,7 @@ def test_values_on_real_fixtures():
     """
     group("values on real fixtures")
     ok = True
-    for name, data in FIXTURES.items():
+    for name, data in page_fixtures().items():
         expect = data["expect"]
         rows = P.parse_rows(data["html"], data["url"], page=1,
                             mode=data["mode"])
@@ -875,6 +887,88 @@ def test_graphql_errors_are_loud():
     return ok
 
 
+def test_endpoint_error_shapes():
+    """Real captured responses for the shapes a page capture cannot show.
+
+    A third-party audit on 2026-10-13 asked for exactly these, and the point
+    is that they are CAPTURED rather than written: §26 records a fixture
+    assembled from two captures that claimed something no response says.
+    Each of these came back from the live endpoint that day.
+
+    The one that earns its keep is `null_key_cursor`. On 2026-09-17 it
+    answered `{"errors":[{"message":"Something went wrong"}]}`, and this
+    repo's price-boundary stop was built on that error. On 2026-10-13 the
+    SAME cursor pages normally — 1,000 rows walked, no error, the last 700
+    unpriced. The behaviour did not need to change (a floor scrape should
+    still stop) but its REASON did, and the fixture is what dates the claim.
+    """
+    group("endpoint error shapes")
+    ok = True
+    edges = (FIXTURES.get("_endpoint_edges") or {}).get("responses") or {}
+    ok &= check(bool(edges),
+                "no captured endpoint responses — regenerate the fixtures")
+    for name in ("invalid_cursor", "null_key_cursor", "unknown_collection",
+                 "validation_error"):
+        ok &= check(name in edges, "the %r response was not captured" % name)
+
+    # EVERY one of these came back HTTP 200. A caller that branches on the
+    # status alone reads all four as success, which is why graphql_errors
+    # exists at all (§8, fail loudly).
+    for name, captured in edges.items():
+        ok &= check(captured.get("status") == 200,
+                    "%s came back HTTP %r — if the endpoint has started "
+                    "using status codes, the classifier should use them too"
+                    % (name, captured.get("status")))
+
+    def body(name):
+        return (edges.get(name) or {}).get("body") or {}
+
+    # An error array must be READ, not stepped over.
+    for name in ("invalid_cursor", "validation_error"):
+        errors = P.graphql_errors(body(name))
+        ok &= check(bool(errors),
+                    "%s: graphql_errors found nothing in a response that "
+                    "carries one" % name)
+        ok &= check(P.rows_from_graphql(body(name), mode="items") == [],
+                    "%s yielded rows out of an error response" % name)
+
+    # An unknown collection is an EMPTY FEED here, not a 404 and not an
+    # error — the opposite of the HTML route, which answers a real 404.
+    unknown = body("unknown_collection")
+    ok &= check(P.graphql_errors(unknown) == [],
+                "an unknown slug should not report an error at the endpoint")
+    ok &= check(P.rows_from_graphql(unknown, mode="items") == [],
+                "an unknown slug should yield no rows")
+    ok &= check(P.graphql_data(unknown, "items") is not None,
+                "an unknown slug still returns the feed object, empty — "
+                "which is how it differs from an error")
+
+    # And the dated one.
+    null_key = body("null_key_cursor")
+    ok &= check(P.graphql_errors(null_key) == [],
+                "the null-key cursor answered with an error. It did in "
+                "September and did not in October; if it errors again, the "
+                "price-boundary stop still holds because it is now keyed on "
+                "the DATA (page_flow.prices_ran_out) — but this fixture "
+                "should be re-captured and dated")
+    ok &= check(bool(P.rows_from_graphql(null_key, mode="items")),
+                "the null-key cursor returned no rows")
+
+    # The data-side stop, which is what the behaviour now rests on.
+    unpriced = [output_writer.Item(sku="x", price=None)]
+    priced = [output_writer.Item(sku="y", price=1.0)]
+    ok &= check(page_flow.prices_ran_out(unpriced, "price"),
+                "a page with no priced row must end a price-ordered walk")
+    ok &= check(not page_flow.prices_ran_out(priced + unpriced, "price"),
+                "a page that still has a priced row must not end the walk")
+    ok &= check(not page_flow.prices_ran_out(unpriced, "created"),
+                "under --sort created an unpriced page is the normal case; "
+                "stopping on it would end every such run at page 1")
+    ok &= check(not page_flow.prices_ran_out([], "price"),
+                "an empty page is handled by the feed's own end condition")
+    return ok
+
+
 def test_graphql_and_state_agree():
     """One normaliser, two routes — the claim this repo is built on (§21).
 
@@ -950,6 +1044,75 @@ def test_dom_fallback():
 # ===========================================================================
 # The output contract
 # ===========================================================================
+def test_a_dom_only_run_is_not_complete():
+    """A file built entirely from the fallback is a degraded read.
+
+    Found live on 2026-10-13, a month after this repo shipped: opensea.io
+    stopped inlining its state on the ranking and on the activity feed. Both
+    modes fell through to the DOM fallback and reported `complete`, exit 0,
+    with **23** and **24** rows — against the **160** and **200** the
+    endpoint served the same minute, with every price present. Every row
+    carried `data_source: dom`, which is that column doing exactly its job,
+    and nothing read it.
+
+    Two guards came out of it, and this pins both:
+
+      * page 1's rows are used only when the state ACTUALLY answered, so a
+        page that stops inlining is handled by the path that already existed
+        for a mismatched request — the feed starts from the endpoint;
+      * a run that is nonetheless all-fallback says so and is NOT complete.
+    """
+    group("a dom-only run is not complete")
+    ok = True
+
+    rows = P.parse_rows(html_of("collection"), fixture("collection")["url"],
+                        mode="items")
+    ok &= check(not page_flow.degraded_to_dom(rows),
+                "a normal run reads from the inlined state, not the fallback")
+
+    stripped = re.sub(r'<script>\(window\[Symbol\.for\("urql_transport"\)\].*?'
+                      r'</script>', "", html_of("collection"), flags=re.S)
+    fallback = P.parse_rows(stripped, fixture("collection")["url"], mode="items")
+    ok &= check(bool(fallback), "the fallback should still find the anchors")
+    ok &= check(page_flow.degraded_to_dom(fallback),
+                "a run that produced only fallback rows must be recognised "
+                "as degraded")
+    ok &= check(all(r.price is None for r in fallback),
+                "the fallback must not invent prices — that is why an "
+                "all-fallback file is worse than its row count suggests")
+
+    # It must NOT be a complete stop reason: rows were written and the
+    # picture is not the one the run asked for.
+    ok &= check(page_flow.DEGRADED_STOP_REASON
+                not in output_writer.COMPLETE_STOP_REASONS,
+                "a degraded read must not report `complete` — that is the "
+                "exact outcome this guard exists to stop")
+    ok &= check(page_flow.degraded_to_dom([]) is False,
+                "an empty run is not a degraded run; it has its own states")
+
+    # And every engine has to consult it, or they disagree about a run's
+    # status on the identical response (§6).
+    for name in ENGINES:
+        source = _engine_source(name)
+        ok &= check("page_flow.degraded_to_dom(" in source,
+                    "%s does not check for an all-fallback run" % name)
+        # The EXPRESSION, not merely the assignment. The first version of
+        # this check looked for the `state_answered = …` line, and a control
+        # that removed the condition from the `ssr_used` expression left
+        # that line untouched — so the suite stayed GREEN against the
+        # reverted fix. §26: a control that stays green is a hole in the
+        # suite, not a pass.
+        ok &= check("args.ssr_usable and state_answered" in source,
+                    "%s computes ssr_used without `and state_answered`, so "
+                    "it trusts page 1's rows even when the page inlined "
+                    "none — which is the 2026-10-13 regression exactly"
+                    % name)
+        ok &= check("state_answered = page_flow.state_answered(" in source,
+                    "%s never asks whether the page inlined any state"
+                    % name)
+    return ok
+
+
 def test_output_contract():
     group("output contract")
     ok = True
@@ -1135,6 +1298,157 @@ def _engine_flags(name):
     return flags
 
 
+def test_a_throttle_is_not_a_block():
+    """§24's distinction, driven end to end against a FAKE driver.
+
+    A refusal and a throttle want opposite responses: a block means a
+    different exit, a throttle means the SAME exit and a longer wait.
+    Lumping them — which this repo did until 2026-10-13, after a third-party
+    audit asked for a cooldown keyed on the kind of response — spends the
+    block budget and an exit rotation on a page that was coming back, and
+    reports exit 3 to a reader who then buys a proxy they do not need.
+
+    WHAT IS NOT CLAIMED: no throttle has ever been seen on this site. The
+    endpoint's `x-ratelimit-remaining` reads 399 and, measured 2026-10-13,
+    does not move — a burst of 60 requests in a few seconds returned 200
+    sixty times with the counter unchanged and no `retry-after` on any of
+    them. So this path is implemented and unexercised HERE, which is a fact
+    about this repo's testing rather than a claim about the endpoint.
+
+    Which is exactly why it is driven offline: a path a live run cannot
+    reach is a path only a fake driver can test.
+    """
+    group("a throttle is not a block")
+    ok = True
+
+    # The policy itself.
+    ok &= check(page_flow.is_throttle(429) and page_flow.is_throttle(503),
+                "429 and 503 must read as throttles")
+    ok &= check(page_flow.is_refusal(403),
+                "403 must read as a refusal")
+    ok &= check(not page_flow.is_throttle(403),
+                "a refusal must not read as a throttle")
+    ok &= check(not page_flow.is_refusal(429),
+                "a throttle must not read as a refusal — that is the whole "
+                "distinction")
+    # The server's own number wins over our guess.
+    ok &= check(page_flow.throttle_wait(1, "12") == 12.0,
+                "a Retry-After in seconds must win over the backoff")
+    ok &= check(page_flow.throttle_wait(1, None)
+                == page_flow.THROTTLE_BASE_SECONDS,
+                "with no Retry-After the wait is the base")
+    ok &= check(page_flow.throttle_wait(3, None)
+                > page_flow.throttle_wait(1, None),
+                "the wait must grow with the attempt")
+    ok &= check(page_flow.throttle_wait(1, "not-a-number")
+                == page_flow.THROTTLE_BASE_SECONDS,
+                "an unparseable Retry-After falls back rather than crashing")
+    ok &= check(page_flow.throttle_wait(99, None)
+                <= page_flow.THROTTLE_MAX_SECONDS,
+                "the wait must be capped — a run should report a long "
+                "throttle, not sit through it")
+
+    # And the engine's own loop, driven with a fake page.
+    try:
+        import playwright_scraper as engine
+    except ImportError as exc:
+        print("  SKIP  playwright_scraper could not be imported (%s)" % exc)
+        return ok
+
+    class _FakePage:
+        """Answers the in-page fetch with whatever the script hands it."""
+
+        def __init__(self, answers):
+            self.answers = list(answers)
+            self.calls = 0
+            self.url = "https://opensea.io/collection/boredapeyachtclub"
+
+        def evaluate(self, js, arg=None):
+            self.calls += 1
+            return self.answers.pop(0) if self.answers else {
+                "status": 0, "text": "", "error": "no answer scripted"}
+
+    class _FakeSession:
+        def __init__(self, page):
+            self.page = page
+
+    class _Args:
+        mode = "items"
+        collection_slug = "boredapeyachtclub"
+        limit = 100
+        sort = "price"
+        ranking = "TRENDING"
+        timeframe = "1d"
+        activity = "all"
+        retries = 2
+        retry_delay = 0.0
+        dump_html = None
+        rank_offset = 1
+
+    good = {"status": 200,
+            "text": json.dumps({"data": {"collectionItems":
+                                         {"items": [], "nextPageCursor": None}}})}
+
+    slept = []
+    real_sleep = engine.time.sleep
+    engine.time.sleep = lambda seconds: slept.append(seconds)
+    try:
+        # 1. A throttle then a good answer: the SAME page is asked again and
+        #    the run carries on. No block, no rotation.
+        page = _FakePage([{"status": 429, "retry_after": "1", "text": ""}, good])
+        outcome = engine._graphql_page(_FakeSession(page), _Args(), "cur", 2)
+        ok &= check(outcome.blocked_by is None,
+                    "a throttle that cleared was reported as a block")
+        ok &= check(not outcome.load_failed,
+                    "a throttle that cleared was reported as a failure")
+        ok &= check(page.calls == 2,
+                    "a throttle must be retried at the same exit; the "
+                    "endpoint was called %d time(s)" % page.calls)
+        ok &= check(slept == [1.0],
+                    "the wait must honour the server's Retry-After, slept %s"
+                    % slept)
+
+        # 2. A throttle that never clears: a FAILED page, not a blocked one,
+        #    and the block budget is untouched.
+        slept.clear()
+        page = _FakePage([{"status": 503, "text": ""}] * 10)
+        outcome = engine._graphql_page(_FakeSession(page), _Args(), "cur", 2)
+        ok &= check(outcome.blocked_by is None,
+                    "a persistent throttle must NOT be reported as a block — "
+                    "the exit is fine and the rate is not")
+        ok &= check(outcome.load_failed,
+                    "a persistent throttle must end the page")
+        ok &= check(outcome.state == "throttled",
+                    "a persistent throttle should say so, got %r"
+                    % outcome.state)
+        ok &= check(page.calls == page_flow.THROTTLE_RETRIES + 1,
+                    "the throttle budget is %d waits; the endpoint was "
+                    "called %d time(s)"
+                    % (page_flow.THROTTLE_RETRIES, page.calls))
+
+        # 3. A real refusal still blocks, which is the other half.
+        page = _FakePage([{"status": 403, "text": ""}])
+        outcome = engine._graphql_page(_FakeSession(page), _Args(), "cur", 2)
+        ok &= check(outcome.blocked_by == "endpoint-http-403",
+                    "a 403 must still read as a block, got %r"
+                    % outcome.blocked_by)
+        ok &= check(page.calls == 1,
+                    "a refusal must not be retried at the same exit")
+    finally:
+        engine.time.sleep = real_sleep
+
+    # The three engines must all carry the branch, or they disagree about a
+    # run's exit code (§6).
+    for name in ENGINES:
+        source = _engine_source(name)
+        ok &= check("page_flow.is_throttle(" in source,
+                    "%s does not consult page_flow.is_throttle" % name)
+        ok &= check("retry_after" in source,
+                    "%s never reads the server's Retry-After, so honouring "
+                    "it is dead code there" % name)
+    return ok
+
+
 def test_engine_flag_parity():
     group("engine flag parity")
     ok = True
@@ -1179,6 +1493,59 @@ def test_engine_flag_parity():
                     "%s has a --country flag; on this site the locale is a "
                     "path in the URL and a flag could only disagree with it"
                     % name)
+    return ok
+
+
+def test_retries_is_a_count_of_attempts():
+    """`--retries 0` must be a usage error, in every engine.
+
+    The loop is `for attempt in range(1, args.retries + 1)`, so 0 runs NO
+    navigation at all and the engine then judges `about:blank` — 39 bytes —
+    and reports a block. A third-party audit on 2026-10-13 passed
+    `--retries 0`, got exit 3, and concluded this site was refusing us while
+    it served 250 rows to the same machine a minute later (§28).
+
+    Read off DISK rather than through an import, deliberately: a check gated
+    behind importing the engine skips for exactly the engines whose driver is
+    absent from the venv, so a fix that reached one engine of three would
+    pass locally and fail in engine-smoke (§27.4).
+    """
+    group("--retries counts attempts")
+    ok = True
+    guard = getattr(page_flow, "attempts", None)
+    ok &= check(callable(guard),
+                "page_flow.attempts is missing — the shared guard that makes "
+                "0 a usage error rather than a silent no-fetch")
+    for name in ENGINES:
+        source = _engine_source(name)
+        declaration = re.search(r'"--retries"\s*,\s*type=([A-Za-z_.]+)', source)
+        ok &= check(declaration is not None,
+                    "%s: could not find the --retries declaration" % name)
+        if declaration:
+            ok &= check(declaration.group(1).endswith("attempts"),
+                        "%s declares --retries as type=%s, so 0 reaches the "
+                        "loop and the run never navigates"
+                        % (name, declaration.group(1)))
+        # And the loop still has to be the shape the guard protects, or the
+        # guard is guarding nothing.
+        ok &= check("range(1, args.retries + 1)" in source,
+                    "%s no longer loops over `range(1, args.retries + 1)` — "
+                    "re-check whether page_flow.attempts is still the right "
+                    "guard for whatever replaced it" % name)
+    if callable(guard):
+        for bad in (0, -1, "nonsense"):
+            try:
+                guard(bad)
+            except Exception as exc:
+                ok &= check(type(exc).__name__ == "ArgumentTypeError",
+                            "page_flow.attempts(%r) raised %s, which argparse "
+                            "will not turn into a usage message"
+                            % (bad, type(exc).__name__))
+            else:
+                ok = check(False,
+                           "page_flow.attempts(%r) was accepted" % (bad,))
+        ok &= check(guard("3") == 3,
+                    "page_flow.attempts should accept a normal value")
     return ok
 
 
@@ -1866,13 +2233,17 @@ def main():
     ok &= test_url_knowledge()
     ok &= test_graphql_bodies()
     ok &= test_graphql_errors_are_loud()
+    ok &= test_endpoint_error_shapes()
     ok &= test_graphql_and_state_agree()
     ok &= test_dom_fallback()
+    ok &= test_a_dom_only_run_is_not_complete()
     ok &= test_output_contract()
     ok &= test_page_and_position_are_unique()
     ok &= test_merge_is_page_ordered()
     ok &= test_dedupe()
+    ok &= test_a_throttle_is_not_a_block()
     ok &= test_engine_flag_parity()
+    ok &= test_retries_is_a_count_of_attempts()
     ok &= test_engine_constants_agree()
     ok &= test_engines_import_their_driver_at_module_level()
     ok &= test_engine_parity(skips)

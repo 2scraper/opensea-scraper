@@ -81,6 +81,7 @@ import product_parser as P
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 CAPTURES = os.path.abspath(os.path.join(REPO_ROOT, "..", "captures"))
 OUT_PATH = os.path.join(REPO_ROOT, "fixtures_generated.json")
+GRAPHQL_ENDPOINT_NOTE = "https://gql.opensea.io/graphql"
 
 # name -> (capture file, the URL it was taken from, mode, rows to keep)
 # `None` for the count means "keep the feed whole": an item page is one row
@@ -362,12 +363,48 @@ def build(name: str, filename: str, url: str, mode: str, keep) -> dict:
             "expect": _expectations(after, trimmed, url, mode)}
 
 
+# Real RESPONSES from the endpoint, for the shapes a page capture cannot
+# show. Captured 2026-10-13 by sending the request that produces each, and
+# stored verbatim — §26's rule, because a fixture assembled by hand can
+# claim what no response ever says. A third-party audit asked for exactly
+# these on the same day.
+#
+#   invalid_cursor      a cursor from one ordering used under another
+#   null_key_cursor     the cursor at the price boundary. In September this
+#                       answered `Something went wrong`; in October it pages
+#                       normally, which is why the fixture is dated and why
+#                       the stop that depends on it was moved onto the data
+#   unknown_collection  a slug that does not exist: 200, no errors, 0 rows —
+#                       NOT the 404 the HTML route gives
+#   validation_error    an enum the schema does not have
+ENDPOINT_EDGES = "endpoint_edges.json"
+
+
+def load_endpoint_edges() -> dict:
+    path = os.path.join(CAPTURES, ENDPOINT_EDGES)
+    if not os.path.exists(path):
+        raise SystemExit(
+            "missing %s — capture it by sending each request; see the "
+            "comment above ENDPOINT_EDGES" % path)
+    with open(path, encoding="utf-8") as f:
+        edges = json.load(f)
+    leaks = scan_for_leaks("endpoint_edges", json.dumps(edges))
+    if leaks:
+        raise SystemExit("\n".join(["refusing to write fixtures:"] + leaks))
+    print("  %-22s %d response shape(s)" % ("endpoint_edges", len(edges)))
+    return edges
+
+
 def main() -> int:
     if not os.path.isdir(CAPTURES):
         raise SystemExit(f"no captures directory at {CAPTURES} — see this "
                          f"file's docstring for how to take one")
     print(f"Reading captures from {CAPTURES}")
     fixtures = {name: build(name, *source) for name, source in SOURCES.items()}
+    fixtures["_endpoint_edges"] = {"url": GRAPHQL_ENDPOINT_NOTE,
+                                   "mode": "items", "html": "",
+                                   "expect": {"rows": 0},
+                                   "responses": load_endpoint_edges()}
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(fixtures, f, ensure_ascii=False, indent=1, sort_keys=True)
     size = os.path.getsize(OUT_PATH)

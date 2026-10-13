@@ -295,6 +295,17 @@ jobs:
               fail.append("only %d of %d collections carry a floor price"
                           % (floors, len(rows)))
 
+          # THE ROUTE MIX, which this job did not check until 2026-10-13 and
+          # which is exactly what it missed. OpenSea stopped inlining its
+          # state on this page; the run fell through to the DOM fallback,
+          # wrote 23 rows instead of 160 with every price null, and reported
+          # complete. The items job asserted its routes and would have gone
+          # red; this one did not. Both do now.
+          views = {r.get("data_source") for r in rows}
+          if views - {"ssr", "graphql"}:
+              fail.append("rows came from %s — a DOM-fallback row carries an "
+                          "address and a name and no prices" % sorted(views))
+
           print("rows=%d ranks=1..%d floors=%d"
                 % (len(rows), len(rows), floors))
           if fail:
@@ -358,6 +369,12 @@ jobs:
           if priced < len(rows) * 0.9:
               fail.append("only %d of %d sales carry a price"
                           % (priced, len(rows)))
+
+          # The route mix, for the same reason as the ranking job above.
+          views = {r.get("data_source") for r in rows}
+          if views - {"ssr", "graphql"}:
+              fail.append("rows came from %s — a DOM-fallback row carries an "
+                          "address and a name and no prices" % sorted(views))
 
           print("rows=%d types=%s priced=%d"
                 % (len(rows), sorted(types), priced))

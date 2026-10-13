@@ -1,4 +1,549 @@
 {
+ "_endpoint_edges": {
+  "expect": {
+   "rows": 0
+  },
+  "html": "",
+  "mode": "items",
+  "responses": {
+   "invalid_cursor": {
+    "body": {
+     "data": null,
+     "errors": [
+      {
+       "extensions": {
+        "code": "DOWNSTREAM_SERVICE_ERROR",
+        "debugInfo": {
+         "additionalInformation": {
+          "cache-control": "no-store",
+          "operationName": "OpenSeaScraperItems__2",
+          "x-cache-status": "BYPASS",
+          "x-trace-id": "7395852710574310495"
+         }
+        },
+        "errorType": "BAD_REQUEST",
+        "service": "graphqlapi"
+       },
+       "locations": [
+        {
+         "column": 101,
+         "line": 1
+        }
+       ],
+       "message": "Invalid cursor",
+       "path": [
+        "collectionItems"
+       ]
+      }
+     ],
+     "extensions": {
+      "debugInfo": {
+       "additionalInformation": {
+        "cache-control": "private, max-age=1, stale-while-revalidate=1",
+        "x-duration-ms": {
+         "federation": 10.4,
+         "graphqlapi": 8.3
+        },
+        "x-ratelimit-remaining": 399,
+        "x-trace-id": "436d95cb42b5034caa84af00ce48fe81"
+       }
+      }
+     }
+    },
+    "status": 200
+   },
+   "null_key_cursor": {
+    "body": {
+     "data": {
+      "collectionItems": {
+       "items": [
+        {
+         "attributes": [
+          {
+           "traitType": "Background",
+           "value": "Blue"
+          },
+          {
+           "traitType": "Clothes",
+           "value": "Navy Striped Tee"
+          },
+          {
+           "traitType": "Earring",
+           "value": "Silver Hoop"
+          },
+          {
+           "traitType": "Eyes",
+           "value": "Sad"
+          },
+          {
+           "traitType": "Fur",
+           "value": "Dark Brown"
+          },
+          {
+           "traitType": "Mouth",
+           "value": "Rage"
+          }
+         ],
+         "bestListing": null,
+         "bestOffer": {
+          "pricePerItem": {
+           "token": {
+            "chain": {
+             "identifier": "ethereum"
+            },
+            "contractAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "symbol": "WETH",
+            "unit": 4.8
+           },
+           "usd": 11974.56
+          }
+         },
+         "chain": {
+          "identifier": "ethereum"
+         },
+         "collection": {
+          "name": "Bored Ape Yacht Club",
+          "slug": "boredapeyachtclub"
+         },
+         "contractAddress": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+         "enforcement": {
+          "isCompromised": false,
+          "isDelisted": false
+         },
+         "id": "0063c612460b320a8fe0ad3dcea71b86",
+         "imageUrl": "https://i2c.seadn.io/ethereum/0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d/2f4290309e29a6f6fb9fd044bd5db2/9e2f4290309e29a6f6fb9fd044bd5db2.png",
+         "lastSale": {
+          "token": {
+           "chain": {
+            "identifier": "ethereum"
+           },
+           "contractAddress": "0x0000000000000000000000000000000000000000",
+           "symbol": "ETH",
+           "unit": 13.349999
+          },
+          "usd": 50332.29972979
+         },
+         "lastSaleAt": "2025-07-21T09:58:35.000Z",
+         "name": "#9703",
+         "owner": {
+          "address": "0x0c5a2c72c009252f0e7312f5a1ab87de02be6fbe",
+          "username": "Xinanko"
+         },
+         "rarity": {
+          "rank": 5923
+         },
+         "standard": "ERC721",
+         "tokenId": "9703",
+         "totalSupply": 1
+        },
+        {
+         "attributes": [
+          {
+           "traitType": "Background",
+           "value": "New Punk Blue"
+          },
+          {
+           "traitType": "Clothes",
+           "value": "Caveman Pelt"
+          },
+          {
+           "traitType": "Earring",
+           "value": "Silver Stud"
+          },
+          {
+           "traitType": "Eyes",
+           "value": "Wide Eyed"
+          },
+          {
+           "traitType": "Fur",
+           "value": "Dmt"
+          },
+          {
+           "traitType": "Hat",
+           "value": "Horns"
+          },
+          {
+           "traitType": "Mouth",
+           "value": "Phoneme L"
+          }
+         ],
+         "bestListing": null,
+         "bestOffer": {
+          "pricePerItem": {
+           "token": {
+            "chain": {
+             "identifier": "ethereum"
+            },
+            "contractAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "symbol": "WETH",
+            "unit": 5.05
+           },
+           "usd": 12598.234999999999
+          }
+         },
+         "chain": {
+          "identifier": "ethereum"
+         },
+         "collection": {
+          "name": "Bored Ape Yacht Club",
+          "slug": "boredapeyachtclub"
+         },
+         "contractAddress": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+         "enforcement": {
+          "isCompromised": false,
+          "isDelisted": false
+         },
+         "id": "007074446d2c3556a9f2457714bd0559",
+         "imageUrl": "https://i2c.seadn.io/ethereum/0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d/55de0ae1b40ab6c850955006ed3ee5/6755de0ae1b40ab6c850955006ed3ee5.png",
+         "lastSale": {
+          "token": {
+           "chain": {
+            "identifier": "ethereum"
+           },
+           "contractAddress": "0x0000000000000000000000000000000000000000",
+           "symbol": "ETH",
+           "unit": 118.0
+          },
+          "usd": 171653.03770039522
+         },
+         "lastSaleAt": "2022-06-13T05:29:56.000Z",
+         "name": "#393",
+         "owner": {
+          "address": "0x722cf9b37b3531c49b34418ced5338e8107c484d",
+          "username": "rsanta"
+         },
+         "rarity": {
+          "rank": 234
+         },
+         "standard": "ERC721",
+         "tokenId": "393",
+         "totalSupply": 1
+        },
+        {
+         "attributes": [
+          {
+           "traitType": "Background",
+           "value": "New Punk Blue"
+          },
+          {
+           "traitType": "Clothes",
+           "value": "Cowboy Shirt"
+          },
+          {
+           "traitType": "Eyes",
+           "value": "Sleepy"
+          },
+          {
+           "traitType": "Fur",
+           "value": "Noise"
+          },
+          {
+           "traitType": "Hat",
+           "value": "Bunny Ears"
+          },
+          {
+           "traitType": "Mouth",
+           "value": "Bored Unshaven"
+          }
+         ],
+         "bestListing": null,
+         "bestOffer": {
+          "pricePerItem": {
+           "token": {
+            "chain": {
+             "identifier": "ethereum"
+            },
+            "contractAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "symbol": "WETH",
+            "unit": 4.8
+           },
+           "usd": 11974.56
+          }
+         },
+         "chain": {
+          "identifier": "ethereum"
+         },
+         "collection": {
+          "name": "Bored Ape Yacht Club",
+          "slug": "boredapeyachtclub"
+         },
+         "contractAddress": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+         "enforcement": {
+          "isCompromised": false,
+          "isDelisted": false
+         },
+         "id": "0076257b5f3837b885d1426acc43021e",
+         "imageUrl": "https://i2c.seadn.io/ethereum/0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d/e679975832f2d62744aa00d31c35a5/34e679975832f2d62744aa00d31c35a5.png",
+         "lastSale": {
+          "token": {
+           "chain": {
+            "identifier": "ethereum"
+           },
+           "contractAddress": "0x0000000000a39bb272e79075ade125fd351887ac",
+           "symbol": "BETH",
+           "unit": 18.35
+          },
+          "usd": 65721.16513807219
+         },
+         "lastSaleAt": "2024-03-06T03:12:35.000Z",
+         "name": "#8056",
+         "owner": {
+          "address": "0x0ba40aa51b2acde113c173337c7c6fb3cc8410a5",
+          "username": null
+         },
+         "rarity": {
+          "rank": 3396
+         },
+         "standard": "ERC721",
+         "tokenId": "8056",
+         "totalSupply": 1
+        },
+        {
+         "attributes": [
+          {
+           "traitType": "Background",
+           "value": "Aquamarine"
+          },
+          {
+           "traitType": "Clothes",
+           "value": "Bone Tee"
+          },
+          {
+           "traitType": "Eyes",
+           "value": "Bored"
+          },
+          {
+           "traitType": "Fur",
+           "value": "Gray"
+          },
+          {
+           "traitType": "Hat",
+           "value": "Beanie"
+          },
+          {
+           "traitType": "Mouth",
+           "value": "Bored Cigarette"
+          }
+         ],
+         "bestListing": null,
+         "bestOffer": {
+          "pricePerItem": {
+           "token": {
+            "chain": {
+             "identifier": "ethereum"
+            },
+            "contractAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "symbol": "WETH",
+            "unit": 4.8
+           },
+           "usd": 11974.56
+          }
+         },
+         "chain": {
+          "identifier": "ethereum"
+         },
+         "collection": {
+          "name": "Bored Ape Yacht Club",
+          "slug": "boredapeyachtclub"
+         },
+         "contractAddress": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+         "enforcement": {
+          "isCompromised": false,
+          "isDelisted": false
+         },
+         "id": "009145332785391aaf74bc32e3b64a19",
+         "imageUrl": "https://i2c.seadn.io/ethereum/0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d/d1e8d56730611395be9f881a1edb10/32d1e8d56730611395be9f881a1edb10.png",
+         "lastSale": {
+          "token": {
+           "chain": {
+            "identifier": "ethereum"
+           },
+           "contractAddress": "0x0000000000000000000000000000000000000000",
+           "symbol": "ETH",
+           "unit": 80.0
+          },
+          "usd": 129784.562766228
+         },
+         "lastSaleAt": "2022-08-23T01:03:56.000Z",
+         "name": "#7221",
+         "owner": {
+          "address": "0x3a0bef9700474a00b10a1063b59685de6e690c08",
+          "username": "ShibaDoge_Peter"
+         },
+         "rarity": {
+          "rank": 8405
+         },
+         "standard": "ERC721",
+         "tokenId": "7221",
+         "totalSupply": 1
+        },
+        {
+         "attributes": [
+          {
+           "traitType": "Background",
+           "value": "New Punk Blue"
+          },
+          {
+           "traitType": "Earring",
+           "value": "Silver Hoop"
+          },
+          {
+           "traitType": "Eyes",
+           "value": "Bored"
+          },
+          {
+           "traitType": "Fur",
+           "value": "Brown"
+          },
+          {
+           "traitType": "Hat",
+           "value": "Cowboy Hat"
+          },
+          {
+           "traitType": "Mouth",
+           "value": "Bored"
+          }
+         ],
+         "bestListing": null,
+         "bestOffer": {
+          "pricePerItem": {
+           "token": {
+            "chain": {
+             "identifier": "ethereum"
+            },
+            "contractAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "symbol": "WETH",
+            "unit": 4.81
+           },
+           "usd": 11999.507
+          }
+         },
+         "chain": {
+          "identifier": "ethereum"
+         },
+         "collection": {
+          "name": "Bored Ape Yacht Club",
+          "slug": "boredapeyachtclub"
+         },
+         "contractAddress": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+         "enforcement": {
+          "isCompromised": false,
+          "isDelisted": false
+         },
+         "id": "0092ff7eb62c3f09bb255ab1e59e7a72",
+         "imageUrl": "https://i2c.seadn.io/ethereum/0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d/400ee862f2561fdd2ae66ededdea86/07400ee862f2561fdd2ae66ededdea86.png",
+         "lastSale": {
+          "token": {
+           "chain": {
+            "identifier": "ethereum"
+           },
+           "contractAddress": "0x0000000000a39bb272e79075ade125fd351887ac",
+           "symbol": "BETH",
+           "unit": 11.65
+          },
+          "usd": 28389.652
+         },
+         "lastSaleAt": "2025-06-28T19:20:23.000Z",
+         "name": "#7082",
+         "owner": {
+          "address": "0xdaa1d1a423304e417ecd43a920e84ae9eef726a5",
+          "username": "DonDiablo7777"
+         },
+         "rarity": {
+          "rank": 9799
+         },
+         "standard": "ERC721",
+         "tokenId": "7082",
+         "totalSupply": 1
+        }
+       ],
+       "nextPageCursor": "W251bGwsIjAwOTJmZjdlLWI2MmMtM2YwOS1iYjI1LTVhYjFlNTllN2E3MiJd"
+      }
+     },
+     "extensions": {
+      "debugInfo": {
+       "additionalInformation": {
+        "cache-control": "private, max-age=1, stale-while-revalidate=1",
+        "x-cache": {
+         "graphqlapi": {
+          "control": "no-store",
+          "status": "BYPASS"
+         },
+         "lc-263c2377dacb": {
+          "IN_MEMORY_HIT": 1,
+          "REMOTE_HIT": 4
+         },
+         "lc-353af61d7ef3": {
+          "REMOTE_HIT": 5
+         },
+         "lc-814195803ebd": {
+          "IN_MEMORY_HIT": 1,
+          "REMOTE_HIT": 4
+         },
+         "lc-f9d2af20cf97": {
+          "MISS": 1,
+          "REMOTE_HIT": 2,
+          "REMOTE_HIT_STALE": 2
+         }
+        },
+        "x-duration-ms": {
+         "federation": 101.4,
+         "graphqlapi": 98.0
+        },
+        "x-ratelimit-remaining": 399,
+        "x-trace-id": "c73453ce207b7e1b067e002e9b9b3842"
+       }
+      }
+     }
+    },
+    "status": 200
+   },
+   "unknown_collection": {
+    "body": {
+     "data": {
+      "collectionItems": {
+       "items": [],
+       "nextPageCursor": null
+      }
+     },
+     "extensions": {
+      "debugInfo": {
+       "additionalInformation": {
+        "cache-control": "private, max-age=1, stale-while-revalidate=1",
+        "x-cache": {
+         "graphqlapi": {
+          "control": "no-store",
+          "status": "BYPASS"
+         }
+        },
+        "x-duration-ms": {
+         "federation": 12.2,
+         "graphqlapi": 9.5
+        },
+        "x-ratelimit-remaining": 399,
+        "x-trace-id": "8587388753e27eec9da3abcb1c2fa339"
+       }
+      }
+     }
+    },
+    "status": 200
+   },
+   "validation_error": {
+    "body": {
+     "errors": [
+      {
+       "extensions": {
+        "code": "BAD_USER_INPUT"
+       },
+       "message": "Variable \"$sort\" has invalid value at .by: Value \"NO_SUCH_SORT\" does not exist in \"CollectionItemsSortBy\" enum."
+      }
+     ]
+    },
+    "status": 200
+   }
+  },
+  "url": "https://gql.opensea.io/graphql"
+ },
  "activity": {
   "expect": {
    "cards": 6,

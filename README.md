@@ -105,13 +105,31 @@ python3 playwright_scraper.py --collection pudgypenguins \
     --mode activity --activity sales --pages 3
 ```
 
-Measured 2026-09-17, one run each:
+Re-measured **2026-10-13**, one run each, three pages each — the September
+figures are kept below the table because the difference between them is the
+site, not the scraper:
 
-| mode | pages | rows | notes |
-|---|---|---|---|
-| `items` | 4 | 350 | stopped at the end of the listed items, exit 0 |
-| `collections` | 3 | 202 | 201 of 202 carried a floor price |
-| `activity` | 3 | 232 | all `SALE`, all priced, all with a timestamp |
+| mode | pages | rows | routes | notes |
+|---|---|---|---|---|
+| `items` | 3 | 250 | `ssr` 50 + `graphql` 200 | every row priced |
+| `collections` | 3 | 161 | `graphql` 161 | 158 of 161 carried a floor price; the feed ended |
+| `activity` | 4 | 300 | `graphql` 300 | all `SALE`, all priced, all timestamped |
+
+**What changed between the two measurements, and it is worth knowing before
+you read any older number here.** On 2026-09-17 the ranking and the activity
+feed both inlined their rows into the page, and the `routes` column for them
+read `ssr` + `graphql`. On 2026-10-13 they no longer inline anything: both
+render client-side, and only a collection page still ships its state. The
+scraper now takes page 1 of those two modes from the endpoint like every
+other page, which is why their `routes` column is `graphql` alone.
+
+That transition is also the one bug this repo shipped with and has now
+fixed: until 2026-10-13 a page that stopped inlining its rows fell through
+to the DOM fallback, and the run reported `complete`, exit 0, with **23** and
+**24** rows against the 160 and 200 the endpoint served the same minute —
+every price null. `data_source` said `dom` on every row and nothing read it.
+A run that is all-fallback now says so and is no longer `complete`, and all
+three canary jobs assert the route mix rather than only the first.
 
 A single item URL works too and yields one row:
 

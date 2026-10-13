@@ -639,13 +639,20 @@ def save(rows: Sequence[Any], out_prefix: str, fmt: str,
 # collection page shows and what "scrape the floor" means — the cursor
 # encodes the last row's price, so it reads `[6.89, "35f3f2a7-…"]`. When the
 # walk crosses from listed items into unlisted ones that key becomes
-# `[null, "005db456-…"]` and the NEXT request answers `Something went wrong`
-# (measured on boredapeyachtclub, 2026-09-17: 300 items over three pages,
-# 282 of them listed, then that error). The run stops there and reports
-# complete, because it has every item that HAS a price and the rest have
-# none: there is nothing further to get under this ordering. `--sort created`
-# walks the whole collection instead and was measured going 800 items deep
-# without a stumble on the same collection.
+# `[null, "005db456-…"]`, and every row sorted after that point has no price.
+# The run stops there and reports COMPLETE, because it holds every item that
+# HAS a price and the rest have none: there is nothing further to get under
+# this ordering. `--sort created` walks the whole collection instead.
+#
+# Note what the run is complete FOR. The feed does not end at that boundary —
+# measured 2026-10-13, it pages on for at least another 700 unpriced rows —
+# so `complete` here means "the question --sort price asks has been answered
+# in full", and the engines say exactly that in the log.
+#
+# (An earlier version of this comment said the next request answers
+# `Something went wrong`. That was true on 2026-09-17 and is not true now;
+# the stop survived the correction because it is keyed on the rows rather
+# than on the error — see `page_flow.prices_ran_out`.)
 COMPLETE_STOP_REASONS = ("completed", "pagination_exhausted",
                          "cursor_exhausted", "listed_items_exhausted",
                          "no_new_products")

@@ -186,9 +186,15 @@ class PageOutcome:
     # must not read the same as a gap of zero (§8).
     gap: Optional[int] = None
     # How many rows page 1 rendered that this run could not use, because it
-    # asked a different question than the page answers. Reported rather than
-    # silently discarded.
+    # asked a different question than the page answers, or because the page
+    # no longer inlines its rows at all. Reported rather than silently
+    # discarded.
     ssr_dropped: int = 0
+    # Whether page 1's own rows were USED. False when the request does not
+    # match what the page renders, and false when the page shipped no state —
+    # the second of which is a site change rather than a request (see
+    # `_fetch_first_page`).
+    ssr_used: bool = False
     scroll: Optional[dict] = None
 
     @property
@@ -560,7 +566,9 @@ async ({endpoint, body}) => {
       body: JSON.stringify(body),
       credentials: 'include',
     });
-    return {status: response.status, text: await response.text()};
+    return {status: response.status,
+            retry_after: response.headers.get('retry-after'),
+            text: await response.text()};
   } catch (e) {
     return {status: 0, text: '', error: String(e)};
   }
@@ -584,7 +592,21 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
         sort=args.sort, ranking=args.ranking, timeframe=args.timeframe,
         activity_filter=args.activity)
 
-    for attempt in range(1, args.retries + 1):
+    # TWO INDEPENDENT BUDGETS, and keeping them independent is the whole
+    # point (§24). `attempt` counts TRANSPORT faults against `--retries`,
+    # which is the caller's allowance for things going wrong. A throttle is
+    # not one of those: it is the site asking us to slow down, the exit is
+    # fine, and waiting is the answer — so a throttle wait does not consume a
+    # transport attempt.
+    #
+    # The first version of this fix used `continue` on a `for` loop over
+    # `--retries`, which silently capped the throttle budget at the transport
+    # one: with `--retries 2` a three-wait throttle policy got two waits. The
+    # offline check that drives this loop with a fake driver caught it.
+    throttled = 0
+    attempt = 0
+    while attempt < args.retries:
+        attempt += 1
         try:
             result = session.page.evaluate(
                 GRAPHQL_FETCH_JS,
@@ -634,7 +656,36 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
             outcome.final_url = session.page.url
             return outcome
 
-        if status in (403, 429, 503):
+        if page_flow.is_throttle(status):
+            # A THROTTLE, not a refusal, and the two want opposite responses
+            # (§24). Waiting at the SAME exit is the answer; rotating away
+            # would spend the block budget and an exit on a page that was
+            # about to come back. It has its own budget so that `--retries`,
+            # which is the caller's allowance for transient faults, is not
+            # quietly consumed by the site asking us to slow down.
+            throttled += 1
+            if throttled <= page_flow.THROTTLE_RETRIES:
+                pause = page_flow.throttle_wait(
+                    throttled, (result or {}).get("retry_after"))
+                logger.warning(
+                    "Page %d: the endpoint answered HTTP %d — a throttle "
+                    "rather than a refusal, so waiting %.1fs and asking the "
+                    "SAME exit again (%d/%d).",
+                    page_num, status, pause, throttled,
+                    page_flow.THROTTLE_RETRIES)
+                time.sleep(pause)
+                attempt -= 1          # a throttle is not a transport fault
+                continue
+            logger.error(
+                "Page %d: still throttled (HTTP %d) after %d wait(s). This "
+                "is not a block — the exit is fine and the rate is not — so "
+                "it is reported as a failed page rather than exit 3. Raise "
+                "--delay.", page_num, status, page_flow.THROTTLE_RETRIES)
+            outcome.load_failed = True
+            outcome.state = "throttled"
+            return outcome
+
+        if page_flow.is_refusal(status):
             # The endpoint refusing is a REFUSAL, not an empty page. Reported
             # as blocked so the run's exit code says so (§8).
             logger.error("Page %d: the endpoint answered HTTP %d.",
@@ -1012,9 +1063,39 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
     logger.info("Parsed %d row(s) from page 1.", len(rows))
 
     outcome.totals = page_flow.collection_totals_on_page(html or "") or None
-    if args.ssr_usable:
+    # TWO conditions, and the second is the one a site change breaks.
+    #
+    # `args.ssr_usable` is about the REQUEST: whether this run asks the same
+    # question the page renders (§21's ordering lesson). `state_answered` is
+    # about the RESPONSE: whether the page inlined its rows at all.
+    #
+    # Measured 2026-10-13: opensea.io stopped shipping `urql_transport` on
+    # the ranking and on the activity feed — both now render client-side,
+    # while a collection page still inlines its items. Without the second
+    # condition the run kept page 1's DOM-fallback rows (an address and a
+    # name, every price null), reported `complete` and exit 0, and wrote 23
+    # rows where the endpoint had 50. `data_source` said `dom` on every one
+    # of them, which is the column working; nothing read it.
+    #
+    # With it, a page that stops inlining its state is handled by the path
+    # that already existed for a mismatched request: page 1 becomes
+    # proof-of-service and totals, and the feed starts from the endpoint —
+    # which served both modes in full on the same day.
+    state_answered = page_flow.state_answered(html or "", args.mode)
+    outcome.ssr_used = bool(args.ssr_usable and state_answered)
+    if outcome.ssr_used:
         outcome.products = rows
         outcome.next_cursor = next_cursor(html or "", args.mode)
+    elif args.ssr_usable:
+        outcome.ssr_dropped = len(rows)
+        logger.warning(
+            "Page 1 did not inline its rows for --mode %s, so its %d "
+            "fallback row(s) are dropped and the feed starts from the "
+            "endpoint instead. That is a change in what the SITE ships, not "
+            "a fault here: the rows a DOM fallback can reach carry an "
+            "address and a name and no prices, so keeping them would report "
+            "a complete run holding a worse answer.",
+            args.mode, len(rows))
     else:
         # The rows page 1 rendered answer a DIFFERENT question than this run
         # is asking, and its cursor belongs to that other ordering. Dropped
@@ -1130,24 +1211,31 @@ def scrape(args) -> int:
                 # dropped, the navigation was infrastructure rather than a
                 # data page, so the walk is one page longer and the flag keeps
                 # meaning what it says.
-                last_page = args.pages + (0 if args.ssr_usable else 1)
+                last_page = args.pages + (0 if first.ssr_used else 1)
                 # Where page 1's rows were dropped there is no cursor to
                 # spend, and a null cursor means the START of the feed rather
                 # than the end of it. The first endpoint request therefore
                 # skips the exhaustion checks — without this the run reads its
                 # own dropped cursor as "the feed ended" and writes nothing,
                 # which it did once before this line existed.
-                feed_started = args.ssr_usable
+                # Keyed on what page 1 actually DID, not on what the
+                # request implied it would do: a page that stopped inlining
+                # its state leaves the feed unstarted, so the first endpoint
+                # call must send no cursor.
+                feed_started = first.ssr_used
                 for page_num in range(2, last_page + 1):
                     if page_flow.page_cap_reached(page_num):
                         logger.warning("Stopping at the %d-page cap.", PAGE_CAP)
                         stop_reason = "page_cap"
                         break
                     if feed_started and page_flow.price_boundary_reached(cursor):
-                        # Caught BEFORE the request is spent: passing this
-                        # cursor back answers `Something went wrong`, and the
-                        # run would report an error for having reached the
-                        # end of what it asked for.
+                        # The cheap half of the price boundary: a null
+                        # sort key means the last row had no price, so
+                        # everything after it has none either. The DATA-side
+                        # half is `prices_ran_out`, checked after each page —
+                        # this one used to be justified by the endpoint
+                        # erroring on such a cursor, which it stopped doing
+                        # between 2026-09-17 and 2026-10-13.
                         stop_reason = "listed_items_exhausted"
                         logger.info("%s", page_flow.sort_note(
                             args.sort, rank_seen, first.totals))
@@ -1196,6 +1284,17 @@ def scrape(args) -> int:
                         break
                     rank_seen += len(outcome.products)
                     cursor = outcome.next_cursor
+
+                    # The DATA-side half of the price boundary (§7). The
+                    # cursor's null key is the cheap signal and it belongs to
+                    # the site's internals — it was an error in September and
+                    # pages fine in October. A page with not one priced row
+                    # is a fact about the catalogue and says the same thing.
+                    if page_flow.prices_ran_out(outcome.products, args.sort):
+                        stop_reason = "listed_items_exhausted"
+                        logger.info("%s", page_flow.sort_note(
+                            args.sort, rank_seen, first.totals))
+                        break
                 else:
                     # The loop ran to --pages without stopping early. If the
                     # site still has a cursor, the run is complete for what
@@ -1212,6 +1311,24 @@ def scrape(args) -> int:
         [(o.page_num, o.products) for o in outcomes], key="sku")
 
     totals = next((o.totals for o in outcomes if o.totals), None)
+
+    # A run built ENTIRELY out of the DOM fallback is a degraded read, and
+    # saying so is the whole point of carrying `data_source` as a column
+    # (§8: never present a guess as a fact). The rows are real and the
+    # prices are not there at all, so this is neither a block nor an empty
+    # result — it is a complete-looking file holding a worse answer, and it
+    # gets its own stop reason so a reader lands on the parser rather than
+    # on their own URL.
+    if page_flow.degraded_to_dom(all_rows):
+        stop_reason = page_flow.DEGRADED_STOP_REASON
+        logger.error(
+            "Every one of the %d row(s) came from the DOM fallback, which "
+            "carries an address and a name and NO prices. The site's own "
+            "inlined state did not parse and the endpoint did not answer "
+            "either. This is reported rather than written off as a complete "
+            "run: re-run with --dump-html and open an issue with the "
+            "snapshot.", len(all_rows))
+
     if all_rows:
         note = page_flow.totals_note(totals, len(all_rows))
         if note:
@@ -1251,6 +1368,19 @@ def scrape(args) -> int:
         # which is legitimate and worth recording rather than hiding.
         "rows_dropped_from_page_1": sum(o.ssr_dropped for o in outcomes),
         "pagination": "cursor",
+        # WHERE THIS RUN STOPPED, so a long walk does not have to start over.
+        # Not a checkpoint/resume feature — a third-party audit asked for one
+        # on 2026-10-13 and that is a product decision the family has
+        # deferred (it needs atomic partial writes and a resume flag). This
+        # is the one fact such a feature would need and that only the run can
+        # know, recorded so the information is not thrown away: the cursor
+        # the site handed back after the last page that landed.
+        #
+        # Null when the feed ended, when a price-ordered walk reached the end
+        # of the listed items, or when nothing was fetched — in each of those
+        # there is nothing to resume from.
+        "last_cursor": next((o.next_cursor for o in reversed(outcomes)
+                             if o.ok and o.next_cursor), None),
     }
 
     return finish_run(all_rows, args.out, args.format, args.allow_empty,
@@ -1346,7 +1476,7 @@ def parse_args():
                         "page 4 has been read and there is nothing to hand a "
                         "second worker. Run several collections at once, one "
                         "process each.")
-    p.add_argument("--retries", type=int, default=3,
+    p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3). "
                         "The pause between attempts doubles each time. A page "
                         "that comes back EMPTY is not retried — see "
@@ -1457,6 +1587,13 @@ def parse_args():
                         f"the WebSocket upgrade arrives, and giving up "
                         f"earlier than the server does leaves the profile "
                         f"held by a half-open session.")
+    p.add_argument("--verbose", action="store_true",
+                   help="Re-raise a driver error instead of reporting it as "
+                        "a one-line environment problem. The default turns "
+                        "'the browser would not start' into exit 2 with an "
+                        "install hint, because a traceback through a driver "
+                        "the reader did not write says 'there is a bug here' "
+                        "when there is not.")
     p.add_argument("--dump-html", default=None, metavar="PATH",
                    help="Save exactly what the parser is given, on success as "
                         "well as failure. Page 1 is written as HTML; every "
@@ -1584,4 +1721,13 @@ if __name__ == "__main__":
         if "profile_locked" in text or "connect to --cdp-endpoint" in text:
             logger.error("%s", text)
             sys.exit(EXIT_API_ERROR)
+        if page_flow.is_launch_failure(text):
+            # Not a crash in this code (exit 1) and not the site refusing us
+            # (exit 3): the browser never started. Exit 2, the usage/
+            # environment code, with one actionable line. Pass --verbose for
+            # the driver's own stack.
+            logger.error("%s", page_flow.launch_failure_advice(text))
+            if getattr(args, "verbose", False):
+                raise
+            sys.exit(2)
         raise
