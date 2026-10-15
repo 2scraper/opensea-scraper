@@ -77,7 +77,7 @@ CREDENTIAL_ALLOWED = (
     # pasted while debugging. An allowlist entry would have switched the
     # check off exactly there. A sibling repo's copy of this script FAILED ON
     # ITS OWN MAIN for the opposite reason: its fixtures were neither
-    # allowlisted nor written this way (§17).
+    # allowlisted nor written this way.
     "{login}", "{user}", "password}@", "***", "u:p@h",
     "login:password@host:port",     # the shape a refusal message prints
     "user:secret@",                 # the proxy-pool masking fixtures
@@ -115,7 +115,7 @@ SCANNED_SUFFIXES = (".py", ".md", ".txt", ".yml", ".yaml", ".example")
 # into pip's vendored code and flags a 32-hex string in `_elffile.py` as
 # key-shaped. Correct about the string, wrong about the file — and it is the
 # FIRST thing a new user sees from `python3 smoke_test.py`. A guard people
-# have to argue with is one they learn to suppress (CLAUDE.md §22).
+# have to argue with is one they learn to suppress.
 #
 # Deliberately NOT a narrowing of what gets scanned: an untracked file is
 # still read, because a key pasted into a scratch file beside the scripts is
@@ -147,12 +147,16 @@ def scanned_files():
         if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
             continue
         # Any virtualenv, however it is named. `.venv-pup` exists here
-        # because the three engines' pins are mutually unsatisfiable (§6) and
+        # because the three engines' pins are mutually unsatisfiable and
         # each one needs its own environment — and a vendored dependency's
         # test data is full of hex strings that are not keys.
+        # RELATIVE to the repository, never the absolute path: `path.parts`
+        # includes every ancestor, so a clone made under a directory called
+        # `live`, `captures` or `venv-work` skipped every file and printed
+        # "nothing credential-shaped" having read nothing.
         if any(part in {".git", "__pycache__", "captures", "live"}
                or part.startswith((".venv", "venv", "node_modules"))
-               for part in path.parts):
+               for part in path.relative_to(REPO).parts):
             continue
         if _is_in_virtualenv(path):
             continue
@@ -218,9 +222,9 @@ def sample_check():
         failed.append("sample_output.csv header differs from output_writer.Product")
 
     if not failed:
-        discounted = sum(1 for r in rows if r.get("original_price"))
+        priced = sum(1 for r in rows if r.get("price") is not None)
         print(f"ok       {len(rows)} rows, {len(expected)} columns, "
-              f"{discounted} discounted, schema matches")
+              f"{priced} priced, schema matches")
     return failed
 
 
@@ -244,6 +248,11 @@ def secret_check():
                 failed.append(f"{rel}:{lineno} contains {match[:6]}… — a "
                               f"32-char hex string, the shape of a 2captcha key")
 
+    if not scanned:
+        # A scan that read nothing has proved nothing, and must not say
+        # "nothing credential-shaped" as if it had.
+        failed.append("0 files scanned — the exclusions skipped the whole "
+                      "repository, so nothing was checked")
     if not failed:
         print(f"ok       {scanned} files scanned, nothing credential-shaped")
     return failed

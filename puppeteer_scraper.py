@@ -19,7 +19,7 @@ of the shared policy, which would drift, this engine runs pyppeteer's
 coroutines on a private event loop through `_AsyncBridge` and hands
 `page_flow` the same plain synchronous callables its twins do. The bridge
 also gives every call an explicit, enforced timeout, which pyppeteer's own
-API does not offer (§8: every remote call is bounded).
+API does not offer (every remote call is bounded).
 
 Example
 -------
@@ -215,7 +215,7 @@ def _install_turnstile_intercept(session) -> None:
     and chlPageData that live only inside that call. pyppeteer spells it
     `evaluateOnNewDocument`; the other two engines spell the same thing
     `context.add_init_script` and `Page.addScriptToEvaluateOnNewDocument`,
-    which is why this cannot live in the shared module (§1).
+    which is why this cannot live in the shared module.
     """
     try:
         session.bridge.run(
@@ -264,7 +264,7 @@ class _Session:
             exit_url = self.pool.current
             # Credentials go through page.authenticate(), never onto the
             # command line: --proxy-server= becomes part of the browser's
-            # argv, readable by anything that can run `ps` (§8).
+            # argv, readable by anything that can run `ps`.
             scrubbed, credentials = split_credentials(exit_url)
             launch_args.append(f"--proxy-server={scrubbed}")
             logger.info("Using proxy exit %s", mask(exit_url))
@@ -307,7 +307,7 @@ class _Session:
         format and at `data.ua` in the other, and a key that exists in
         neither makes `--fingerprint` silently set no user agent at all —
         which defeats the flag rather than breaking it, and was live in four
-        sibling repos at once (§16).
+        sibling repos at once.
 
         The init script is the same one the Playwright engine installs on its
         context. Shared deliberately: two engines applying different halves
@@ -354,7 +354,7 @@ class _Session:
 # ---------------------------------------------------------------------------
 # Only "how to ask this driver" lives here. pyppeteer takes `() => expr` like
 # Playwright and unlike Selenium, which is exactly why page_flow names
-# operations rather than passing JavaScript across the boundary (§1).
+# operations rather than passing JavaScript across the boundary.
 def _count(session, selector: str) -> int:
     try:
         return len(session.bridge.run(session.page.querySelectorAll(selector)))
@@ -372,7 +372,7 @@ def _sleep(ms: int) -> None:
 # DOCUMENT's status, which is the only unambiguous signal that an unknown
 # collection slug is `empty` rather than a `shell` that has not painted —
 # without it this engine would record a different state than its twins on the
-# identical URL (§6).
+# identical URL.
 _SITE_HOST_FRAGMENTS = ("opensea.io",)
 
 
@@ -452,7 +452,7 @@ def _min_matches(args, html: str = "") -> int:
 
 def _classify(session, html: str, status=None, mode: str = "items") -> str:
     # `status` POSITIONAL and second, matching the other two engines and the
-    # callee's real signature (§17).
+    # callee's real signature.
     return page_flow.classify(html, status, _current_url(session), mode)
 
 
@@ -478,7 +478,7 @@ def _proxy_failure(exc) -> str:
 # The cursor pages. pyppeteer takes an async arrow function like Playwright
 # does; the request, the endpoint and the body are identical across all three
 # engines, and the body is built by `product_parser.graphql_body` so the
-# requests are byte-identical (§6).
+# requests are byte-identical.
 #
 # Issued from INSIDE the page: same-origin cookies (including Cloudflare's
 # `__cf_bm`), the connection the page already has, and the same exit as the
@@ -507,7 +507,7 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
 
     Never raises for an EXPECTED failure. This endpoint answers HTTP 200 with
     an `errors` array rather than a 4xx, so a caller that only checks the
-    status code reads a failure as an empty page (§8, fail loudly).
+    status code reads a failure as an empty page (fail loudly).
     """
     outcome = PageOutcome(page_num=page_num, url=_current_url(session))
     body = graphql_body(
@@ -516,7 +516,7 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
         activity_filter=args.activity)
 
     # TWO INDEPENDENT BUDGETS, and keeping them independent is the whole
-    # point (§24). `attempt` counts TRANSPORT faults against `--retries`,
+    # point. `attempt` counts TRANSPORT faults against `--retries`,
     # which is the caller's allowance for things going wrong. A throttle is
     # not one of those: it is the site asking us to slow down, the exit is
     # fine, and waiting is the answer — so a throttle wait does not consume a
@@ -576,8 +576,8 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
             return outcome
 
         if page_flow.is_throttle(status):
-            # A THROTTLE, not a refusal, and the two want opposite responses
-            # (§24). Waiting at the SAME exit is the answer; rotating away
+            # A THROTTLE, not a refusal, and the two want opposite responses.
+            # Waiting at the SAME exit is the answer; rotating away
             # would spend the block budget and an exit on a page that was
             # about to come back. Its own budget, so that `--retries` — the
             # caller's allowance for transient faults — is not quietly
@@ -625,7 +625,7 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
     return outcome
 
 
-def handle_captcha_if_present(session, args) -> bool:
+def handle_captcha_if_present(session, args, budget) -> bool:
     """Detect and solve a challenge. True if something was solved.
 
     Identical policy to the other two engines — see
@@ -671,6 +671,12 @@ def handle_captcha_if_present(session, args) -> bool:
     if not args.twocaptcha_key:
         logger.warning("No 2captcha API key, so this challenge cannot be "
                        "solved — continuing with whatever the page holds.")
+        return False
+    # The page's allowance is spent HERE, immediately before the purchase,
+    # so both call sites in _fetch_first_page and every block-retry share it.
+    if not budget.spend():
+        logger.warning("This page has already used its %d paid solve(s) — "
+                       "not buying another.", budget.limit)
         return False
     try:
         token = solve_recaptcha(challenge, args.twocaptcha_key,
@@ -737,7 +743,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
     block_retries = 0 if not page_flow.RETRY_ON_BLOCKED else (
         args.proxy_block_retries if has_pool
         else page_flow.BLOCK_RETRIES_WITHOUT_POOL)
-    solves_bought = 0
+    budget = page_flow.SolveBudget()
     html, state, load_failed = None, "ok", False
     status = None
 
@@ -774,7 +780,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
         if load_failed:
             break
 
-        if handle_captcha_if_present(session, args):
+        if handle_captcha_if_present(session, args, budget):
             time.sleep(1.0)
 
         html = _content(session) or ""
@@ -797,9 +803,8 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
             state = _classify(session, html, status, args.mode)
 
         if (page_flow.should_solve(state)
-                and solves_bought < page_flow.SOLVES_PER_PAGE):
-            solves_bought += 1
-            if handle_captcha_if_present(session, args):
+                and budget.remaining()):
+            if handle_captcha_if_present(session, args, budget):
                 time.sleep(1.0)
                 html = _content(session) or html
                 state = _classify(session, html, status, args.mode)
@@ -903,7 +908,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
     outcome.totals = page_flow.collection_totals_on_page(html or "") or None
     # TWO conditions, and the second is the one a site change breaks.
     # `args.ssr_usable` is about the REQUEST (does this run ask the question
-    # the page renders, §21); `state_answered` is about the RESPONSE (did the
+    # the page renders); `state_answered` is about the RESPONSE (did the
     # page inline its rows at all). Measured 2026-10-13: opensea.io stopped
     # shipping `urql_transport` on the ranking and the activity feed, and
     # without the second condition the run kept page 1's DOM-fallback rows —
@@ -922,7 +927,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
             "a fault here.", args.mode, len(rows))
     else:
         # The rows page 1 rendered answer a DIFFERENT question than this run
-        # is asking, and its cursor belongs to that other ordering (§21).
+        # is asking, and its cursor belongs to that other ordering.
         outcome.ssr_dropped = len(rows)
         logger.info("%s", ssr_mismatch_note(
             args.mode, sort=args.sort, ranking=args.ranking,
@@ -1071,7 +1076,7 @@ def scrape(args) -> int:
                 rank_seen += len(outcome.products)
                 cursor = outcome.next_cursor
 
-                # The DATA-side half of the price boundary (§7). The
+                # The DATA-side half of the price boundary. The
                 # cursor's null key is the cheap signal and it belongs to
                 # the site's internals — an error in September, paging fine
                 # in October. A page with not one priced row is a fact about
@@ -1098,7 +1103,7 @@ def scrape(args) -> int:
 
     # A run built ENTIRELY out of the DOM fallback is a degraded read, and
     # saying so is the whole point of carrying `data_source` as a column
-    # (§8: never present a guess as a fact). The rows are real and the
+    # (never present a guess as a fact). The rows are real and the
     # prices are not there at all, so this is neither a block nor an empty
     # result — it is a complete-looking file holding a worse answer, and it
     # gets its own stop reason so a reader lands on the parser rather than
@@ -1201,26 +1206,41 @@ def parse_args():
                    default=DEFAULT_ACTIVITY_FILTER,
                    help=f"Which events --mode activity keeps (default "
                         f"{DEFAULT_ACTIVITY_FILTER}).")
-    p.add_argument("--pages", type=int, default=1,
-                   help=f"Pages to fetch (default 1, cap {PAGE_CAP}).")
-    p.add_argument("--limit", type=int, default=MAX_LIMIT, metavar="N",
-                   help=f"Rows per cursor page (default and maximum "
-                        f"{MAX_LIMIT} — the endpoint states that limit "
-                        f"itself).")
+    p.add_argument(
+        "--pages",
+        type=page_flow.number_at_least("--pages", 1),
+        default=1,
+        help=f"Pages to fetch (default 1, cap {PAGE_CAP}).")
+    p.add_argument(
+        "--limit",
+        type=page_flow.number_at_least("--limit", 1),
+        default=MAX_LIMIT, metavar="N",
+        help=f"Rows per cursor page (default and maximum "
+             f"{MAX_LIMIT} — the endpoint states that limit "
+             f"itself).")
     p.add_argument("--category", default=None,
                    help="Accepted for the family's shape and mapped onto "
                         "--collection.")
-    p.add_argument("--delay", type=float, default=1.0,
-                   help="Delay between pages, seconds (default 1.0).")
-    p.add_argument("--concurrency", type=int, default=1, metavar="N",
-                   help="Accepted for the family's shape and REFUSED above 1, "
-                        "with the reason: page 5's request does not exist "
-                        "until page 4 has been read.")
+    p.add_argument(
+        "--delay",
+        type=page_flow.number_at_least("--delay", 0, float),
+        default=1.0,
+        help="Delay between pages, seconds (default 1.0).")
+    p.add_argument(
+        "--concurrency",
+        type=page_flow.number_at_least("--concurrency", 1),
+        default=1, metavar="N",
+        help="Accepted for the family's shape and REFUSED above 1, "
+             "with the reason: page 5's request does not exist "
+             "until page 4 has been read.")
     p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3).")
-    p.add_argument("--retry-delay", type=float, default=2.0,
-                   help="Seconds before the first retry, doubling thereafter "
-                        "(default 2.0)")
+    p.add_argument(
+        "--retry-delay",
+        type=page_flow.number_at_least("--retry-delay", 0, float),
+        default=2.0,
+        help="Seconds before the first retry, doubling thereafter "
+             "(default 2.0)")
     p.add_argument("--format", choices=["json", "csv", "both"], default="both")
     p.add_argument("--out", default="opensea_items",
                    help="Output file prefix")
@@ -1248,9 +1268,12 @@ def parse_args():
                         "re-navigation.")
     p.add_argument("--proxy-shuffle", action="store_true",
                    help="Shuffle the pool at startup.")
-    p.add_argument("--proxy-block-retries", type=int, default=2,
-                   help="When a page comes back refused, retry it from this "
-                        "many OTHER exits before giving up (default 2).")
+    p.add_argument(
+        "--proxy-block-retries",
+        type=page_flow.number_at_least("--proxy-block-retries", 0),
+        default=2,
+        help="When a page comes back refused, retry it from this "
+             "many OTHER exits before giving up (default 2).")
     p.add_argument("--twocaptcha-key", default=None, help="2captcha.com API key")
     p.add_argument("--allow-empty", action="store_true",
                    help="Write output files even when 0 rows were found.")
@@ -1274,7 +1297,7 @@ def parse_args():
                         "challenge was met on opensea.io while this was "
                         "written, so the path is unexercised HERE — a fact "
                         "about this repo's testing and not a claim about what "
-                        "a solver can do (§19).")
+                        "a solver can do.")
     p.add_argument("--min-score", type=float, default=0.7,
                    help="reCAPTCHA v3 minimum score to request.")
     p.add_argument("--cdp-endpoint", default=None,
@@ -1304,10 +1327,24 @@ def parse_args():
     p.add_argument("--headful", dest="headless", action="store_false",
                    help="Run with a real browser window. Needs a display.")
     args = p.parse_args()
+    # What the user TYPED, captured before the environment fills anything in.
+    # An OPENSEA_URL from the environment or .env is a default for a bare
+    # run; it must never outrank --collection, --category or --mode
+    # collections, or the run silently reads the environment's collection.
+    typed_url = args.url
     env_config.apply(args)
 
     if args.category and not args.collection:
         args.collection = args.category
+    if not typed_url and args.url and (args.collection
+                                       or args.mode == "collections"):
+        logger.info("Ignoring OPENSEA_URL (%s): --collection/--category or "
+                    "--mode collections says what to read.", args.url)
+        args.url = None
+    if (typed_url and args.collection
+            and collection_slug_from_url(typed_url) != args.collection):
+        p.error(f"--url {typed_url!r} and --collection {args.collection!r} "
+                f"name different things. Give one of the two.")
     if not args.url:
         if args.collection:
             mode = args.mode or "items"

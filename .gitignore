@@ -40,6 +40,24 @@ _*.py
 *_debug.html
 *_debug.png
 *.html.page*
+# --dump-html with any other name and --pages > 1 writes NAME.pageN.
+*.page[0-9]*
+
+# --- working directories, by KIND rather than by one remembered name -----
+# A raw capture reaches `git add -A` through whichever directory nobody had
+# listed, so every usual name for a scratch or output directory is here, plus
+# any HTML dropped at the repository root.
+/out/
+/output/
+/runs/
+/run/
+/results/
+/result/
+/tmp/
+/scratch/
+/dumps/
+/dump/
+/*.html
 
 # --- captures kept for parser work ---------------------------------------
 # The smoke suite's fixtures are committed (trimmed, inside smoke_test.py);
@@ -89,7 +107,7 @@ secrets*
 # recoverable only because that repo was private at the time. On 2026-09-17
 # a sibling had an untracked `.env.bak` holding a 32-hex key in a PUBLIC
 # repository, one `git add -A` from publication. Craigslist was fixed then
-# and the fix never reached anyone else, which is §16's rule unapplied: when
+# and the fix never reached anyone else, which is the rule unapplied: when
 # you fix one, check the siblings.
 .env*
 !.env.example
@@ -98,6 +116,6 @@ secrets*
 live/
 
 # One virtualenv per engine — the three engines' pins are mutually
-# unsatisfiable (§6), so a reader following the README ends up with several.
+# unsatisfiable, so a reader following the README ends up with several.
 .venv-pup/
 .venv-*/

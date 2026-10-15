@@ -320,7 +320,7 @@ came out in **RU** (`AS24955`) rather than the EU its hostname suggests:
 | pool rotation | a dead exit first, the live one second: `ERR_PROXY_CONNECTION_FAILED` recognised as a proxy fault rather than a timeout, rotated, fresh browser, 150 rows, exit 0 |
 | **the password in any process command line** | **absent** — checked with `ps` mid-run against a real secret; the browser was given `--proxy-server=http://eu.proxy.2captcha.com:2334`, host and port only |
 
-That last row is the one worth having a real credential for. §3 promises a
+That last row is the one worth having a real credential for. This repo promises a
 secret never reaches `argv`, where anything that can run `ps` could read it;
 Playwright is handed the credentials through its own proxy fields instead.
 It is now checked with a live password rather than a fixture.

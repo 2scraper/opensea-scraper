@@ -6,9 +6,9 @@ name: canary
 #
 # THIS CANARY NEEDS NO SECRETS, AND THAT IS THE POINT
 # ---------------------------------------------------
-# §11 says a canary that cannot pass must SKIP rather than go red every day,
+# A canary that cannot pass must SKIP rather than go red every day,
 # because a check that is always red teaches everyone to ignore checks. The
-# other half of that rule is §21's: a canary that CAN pass without a
+# other half of that rule: a canary that CAN pass without a
 # credential should never be gated on one.
 #
 # This one can. Measured from one Hetzner datacentre address in Helsinki
@@ -29,17 +29,20 @@ name: canary
 #
 # It goes through the ENVIRONMENT rather than a commented-out --proxy line,
 # because env_config.py already reads exactly that variable, a credential
-# must never reach a command line (§3), and an unset secret arrives as an
+# must never reach a command line, and an unset secret arrives as an
 # empty string which the loader treats as "not configured". One line is
 # correct with and without it.
 #
 # WHAT FAILS THE BADGE AND WHAT ONLY WARNS
 # ----------------------------------------
-# A block (exit 3) WARNS, and says in the step summary that the site-side
-# check did not happen today, so a warning cannot read as a pass. Parsing
-# zero rows from a page the site plainly served (exit 4), a pagination walk
-# that stops short, or a coverage floor being missed DOES fail — those are
-# the regressions this exists to catch.
+# Everything that means the site was NOT tested today fails the job: a block
+# (exit 3), content never obtained (exit 5), zero rows (exit 4) in any mode,
+# and an unexpected exit. A green badge has to mean "OpenSea was read today
+# and the parser worked", and a warning on a green run reads as a pass. A
+# pagination walk that stops short or a row/field floor being missed fails
+# too — those are the regressions this exists to catch. The floors test the
+# PARSER (row counts a busy collection always fills, non-null core fields,
+# the shape of the walk), not market levels that can move overnight.
 
 on:
   schedule:
@@ -102,8 +105,8 @@ jobs:
           case "${{ steps.items.outputs.exit_code }}" in
             0) echo "::notice::Items walk complete." ;;
             3)
-              echo "::warning::Blocked before parsing (exit 3) from a bare GitHub runner. Nothing refused this scraper from a datacentre address while it was written, so this says something about the runner rather than about this code — but it also means the site-side check did NOT happen today."
-              echo "A runner address was refused. The parser was not exercised. Set an \`OPENSEA_PROXY\` secret to give this canary an exit whose request rate it controls." >> "$GITHUB_STEP_SUMMARY" ;;
+              echo "::error::Blocked before parsing (exit 3) from a GitHub runner, so the site was NOT tested today. Nothing refused this scraper from a datacentre address while it was written, so look at the dump in the artefacts; an OPENSEA_PROXY secret gives the canary another exit if runner addresses start being refused."
+              exit 1 ;;
             4)
               echo "::error::Ran fine and parsed 0 rows (exit 4) from a collection that holds ten thousand items. The inlined urql state or the GraphQL query has most likely moved — this is exactly the regression this canary exists to catch. The dump in the artefacts tells you which."
               exit 1 ;;
@@ -127,7 +130,7 @@ jobs:
           fail = []
 
           # THE PAGINATION CHECK. With one page a dead page walk is invisible,
-          # which is the family's most expensive bug (§7). Here the walk is
+          # which is the family's most expensive bug. Here the walk is
           # cursor-driven, so "did page 2 use page 1's cursor" is the thing
           # that has to keep working.
           if meta["pages_completed"] < 3:
@@ -182,12 +185,14 @@ jobs:
               fail.append("the walk found %d priced rows and OpenSea says "
                           "%d items are listed — the two are supposed to "
                           "agree" % (priced, listed))
-          if priced < 100:
-              fail.append("only %d priced rows; a collection with a live "
-                          "floor should carry far more" % priced)
+          # At least one priced row: the floor exists on any collection with
+          # a listing. How MANY are listed is market state, and the count is
+          # already checked against OpenSea's own listedItemCount above.
+          if priced < 1:
+              fail.append("no priced rows; the price walk read nothing")
 
           # A price is a TOKEN amount and the token is named. A defaulted
-          # currency, or an empty-string one, is the §4 failure — and so is a
+          # currency, or an empty-string one, is a guess presented as a fact — and so is a
           # currency on a row that has no price.
           if any(r.get("price") is not None and not r.get("currency")
                  for r in rows):
@@ -212,14 +217,14 @@ jobs:
                           "or its endpoint" % sorted(views))
 
           # `position` restarts at 1 on every page, so the column is
-          # worthless without `page` beside it (§18).
+          # worthless without `page` beside it.
           pairs = {(r.get("page"), r.get("position")) for r in rows}
           if len(pairs) != len(rows):
               fail.append("page+position is not unique across the run")
           if len({r["sku"] for r in rows}) != len(rows):
               fail.append("two rows share a sku")
 
-          # §21's arithmetic: the sidecar must say what the collection holds
+          # The sidecar must say what the collection holds
           # beside what the run read, or `complete` is lying by omission.
           totals = meta.get("collection_totals") or {}
           if not totals.get("total_supply"):
@@ -253,8 +258,8 @@ jobs:
           case "${{ steps.ranking.outputs.exit_code }}" in
             0) echo "::notice::Ranking run complete." ;;
             3)
-              echo "::warning::Blocked on the ranking run (exit 3)."
-              echo "The ranking run was refused; that mode was not exercised today." >> "$GITHUB_STEP_SUMMARY" ;;
+              echo "::error::Blocked on the ranking run (exit 3); that mode was not tested today."
+              exit 1 ;;
             4)
               echo "::error::0 rows from /collections, which renders fifty collections."
               exit 1 ;;
@@ -333,11 +338,11 @@ jobs:
           case "${{ steps.activity.outputs.exit_code }}" in
             0) echo "::notice::Activity run complete." ;;
             3)
-              echo "::warning::Blocked on the activity run (exit 3)."
-              echo "The activity run was refused; that mode was not exercised today." >> "$GITHUB_STEP_SUMMARY" ;;
+              echo "::error::Blocked on the activity run (exit 3); that mode was not tested today."
+              exit 1 ;;
             4)
-              echo "::warning::0 rows from a sales feed. A quiet collection can legitimately have no sales in its recent feed, so this warns rather than failing — but check the dump if it repeats."
-              echo "The activity feed came back empty. That is legitimate on a quiet collection and worth looking at if it happens two days running." >> "$GITHUB_STEP_SUMMARY" ;;
+              echo "::error::0 rows from the sales feed of Pudgy Penguins, which sells every day (300 sales over three pages on 2026-10-15). An empty feed here means the parser or the query broke, not a quiet market."
+              exit 1 ;;
             *)
               echo "::error::Unexpected exit ${{ steps.activity.outputs.exit_code }}."
               exit 1 ;;

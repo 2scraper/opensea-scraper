@@ -81,50 +81,10 @@ jobs:
           EOF
 
       - name: Committed sample output is real
-        # The README links to these two files, so a push without them ships
-        # broken links. And a sample invented by hand drifts from the schema and
-        # teaches readers the wrong field names, so these are cut from a real
-        # run rather than written by hand.
-        run: |
-          python - <<'EOF'
-          import csv, json, sys
-          from pathlib import Path
-
-          MARKERS = ("sample-product-", "example brand", "sample product",
-                     "product description text", "lorem ipsum")
-
-          fail = []
-          for name in ("sample_output.json", "sample_output.csv"):
-              if not Path(name).is_file():
-                  fail.append(f"{name} is missing — regenerate it from a real run")
-
-          if not fail:
-              rows = json.loads(Path("sample_output.json").read_text())
-              if not rows:
-                  fail.append("sample_output.json is empty")
-              blob = json.dumps(rows).lower()
-              hit = [m for m in MARKERS if m in blob]
-              if hit:
-                  fail.append(f"sample_output.json looks fabricated: {hit}")
-
-              # Column set must match what the writers actually produce.
-              from output_writer import Product
-              from dataclasses import asdict
-              expected = list(asdict(Product()).keys())
-              for i, row in enumerate(rows):
-                  if list(row.keys()) != expected:
-                      fail.append(f"row {i} columns drifted from output_writer.Product")
-                      break
-
-              with open("sample_output.csv", newline="", encoding="utf-8") as f:
-                  header = next(csv.reader(f))
-              if header != expected:
-                  fail.append("sample_output.csv header drifted from output_writer.Product")
-
-          for line in fail:
-              print("FAILED:", line)
-          sys.exit(1 if fail else 0)
-          EOF
+        # The README links to these two files, and a sample invented by hand
+        # drifts from the schema. One implementation, in ci_checks.py, rather
+        # than a second copy inlined here that imports the row class itself.
+        run: python3 .github/ci_checks.py --sample-check
 
       - name: Config reporter runs with no .env present
         run: python env_config.py

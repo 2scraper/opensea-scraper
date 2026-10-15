@@ -40,7 +40,7 @@ WHAT IT ENFORCES, and why each rule is here
     capture, and written into the fixture file. A hand-typed expectation is a
     guess about the site; a computed one is a record of it.
 
-WHAT IS NOT VERBATIM, and why (§10)
+WHAT IS NOT VERBATIM, and why
 ------------------------------------
 Two kinds of field are replaced with obvious placeholders before anything
 else happens:
@@ -52,7 +52,7 @@ An OpenSea profile handle is a real person's chosen public name, and a
 capture of a busy collection carries dozens of them. The site showing them on
 its own page is one thing; this repository republishing them is a separate
 act, and the checks need the STRUCTURE of an owner rather than the person
-(§10). The scrub runs on the ORIGINAL before the trim, so what the tests
+The scrub runs on the ORIGINAL before the trim, so what the tests
 compare against is the scrubbed page and the two cannot disagree.
 
 WALLET ADDRESSES ARE KEPT, deliberately. An address is the row's id, it is
@@ -112,7 +112,7 @@ SOURCES = {
                              "items", None),
     # THE SAME collection page, fetched over the 2Captcha Scraping Browser.
     # It is here because a guard is only as good as the fixture it runs
-    # against (§21): the check that `cf-turnstile` must never be a marker
+    # against: the check that `cf-turnstile` must never be a marker
     # would otherwise run only against pages this repo fetched with a local
     # browser, which carry no extension injection at all — and would pass for
     # the wrong reason. This one carries the injection, measured.
@@ -127,7 +127,7 @@ GOOD_PAGES = ("collection", "collection_solana", "collection_ja", "ranking",
 
 
 # ---------------------------------------------------------------------------
-# The scrub (§10)
+# The scrub
 # ---------------------------------------------------------------------------
 # Applied to the ORIGINAL capture, before anything is trimmed or measured, so
 # the expectations written into the fixture file describe the scrubbed page
@@ -222,7 +222,7 @@ def _strip_furniture(html: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The leak scan (§10)
+# The leak scan
 # ---------------------------------------------------------------------------
 # PATTERNS rather than the literals of a capture that happened to be clean:
 # the next capture is the one that will carry something.
@@ -296,7 +296,7 @@ def _expectations(rows: list, html: str, url: str, mode: str) -> dict:
 
     Values, not coverage: a column can be 100% populated and entirely wrong,
     and a sibling repo shipped a `review_count` of 445279961 on every row
-    with a coverage check reading 100% (§10).
+    with a coverage check reading 100%.
     """
     first = asdict(rows[0]) if rows else {}
     first.pop("scraped_at", None)
@@ -365,7 +365,7 @@ def build(name: str, filename: str, url: str, mode: str, keep) -> dict:
 
 # Real RESPONSES from the endpoint, for the shapes a page capture cannot
 # show. Captured 2026-10-13 by sending the request that produces each, and
-# stored verbatim — §26's rule, because a fixture assembled by hand can
+# stored verbatim, because a fixture assembled by hand can
 # claim what no response ever says. A third-party audit asked for exactly
 # these on the same day.
 #
