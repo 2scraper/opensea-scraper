@@ -32,7 +32,7 @@ a sibling. The ones worth knowing about before you change anything:
     `lastSale.token.symbol` is the empty string on 11 of 50 rows of the Bored
     Ape capture, which written through reads as a currency.
 
-  * `test_markers_do_not_match_a_good_page` is the §18 rule as a test. Every
+  * `test_markers_do_not_match_a_good_page` is the count-the-marker-on-a-good-page rule as a test. Every
     marker in every set is asserted ABSENT from six pages known to be good.
     It is also what pins the decision NOT to treat OpenSea's own "404: This
     page could not be found." as an empty-state marker: Next.js ships that
@@ -159,7 +159,7 @@ def test_fixtures_are_present():
 
 
 def test_values_on_real_fixtures():
-    """Assert VALUES on real fixtures, not coverage (§10).
+    """Assert VALUES on real fixtures, not coverage.
 
     Every expectation here was COMPUTED from the untrimmed capture by
     make_fixtures.py rather than typed by hand: a hand-typed expectation is a
@@ -293,7 +293,7 @@ def test_empty_symbol_is_null():
 def test_enforcement_flags_are_pinned_not_trusted():
     """Pin the CURRENT behaviour of a column never seen taking its other value.
 
-    §10 says to pin a known limitation rather than half-guard it, so a future
+    The rule is to pin a known limitation rather than half-guard it, so a future
     change becomes a decision instead of a surprise. Neither enforcement flag
     has ever been observed True — 3,400 items across two orderings and ten
     collections, measured 2026-09-17 — so what is asserted here is the SHAPE
@@ -336,7 +336,7 @@ def test_prices_are_tokens_not_dollars():
                     "%s: price_usd (%r) should be the dollar figure and "
                     "price (%r) the token amount — they look swapped"
                     % (row.sku, row.price_usd, row.price))
-    # No defaulted currency anywhere (§4's last rung: absent is null).
+    # No defaulted currency anywhere (absent is null).
     for row in rows:
         if row.price is None:
             ok &= check(row.currency is None,
@@ -417,7 +417,7 @@ def test_collection_rows():
 
 
 def test_collection_totals():
-    """§21's arithmetic: complete and exhaustive are different words."""
+    """Complete and exhaustive are different words."""
     group("collection totals")
     ok = True
     totals = P.collection_totals(html_of("collection"))
@@ -441,7 +441,7 @@ def test_collection_totals():
 # Markers, and the ones deliberately absent
 # ===========================================================================
 def test_markers_do_not_match_a_good_page():
-    """§18: count every marker on a page you know is good, FIRST.
+    """Count every marker on a page you know is good, FIRST.
 
     A marker that matches every page is worse than no marker: a sibling repo
     reported "Blocked by akamai" and exit 3 on a 191 KB page the site had
@@ -498,7 +498,7 @@ def test_cf_turnstile_is_not_a_marker():
 
 
 def test_extension_injection_does_not_read_as_a_challenge():
-    """The §19 trap, pinned against the fixture that can actually spring it.
+    """The injected-marker trap, pinned against the fixture that can actually spring it.
 
     2Captcha's Scraping Browser ships an auto-solve extension that injects
     its own Turnstile hunter into every page it loads. MEASURED on this site
@@ -520,7 +520,7 @@ def test_extension_injection_does_not_read_as_a_challenge():
 
     THE FIXTURE IS THE POINT. A sibling repo shipped this check and it
     PASSED FOR THE WRONG REASON: it ran only against pages fetched with a
-    plain client, which carry no injection at all (§21). This one runs
+    plain client, which carry no injection at all. This one runs
     against a real Scraping Browser capture that does.
     """
     group("scraping browser extension injection")
@@ -551,7 +551,7 @@ def test_extension_injection_does_not_read_as_a_challenge():
 
 
 def test_the_not_found_sentence_is_not_a_marker():
-    """Pin the §18 trap this repo caught in the act.
+    """Pin the marker trap this repo caught in the act.
 
     OpenSea's "not found" page reads `404: This page could not be found.`,
     which looks like the obvious marker for an unknown collection slug.
@@ -600,7 +600,7 @@ def test_classification():
         ok &= check(P.served_by_opensea(html_of(name)),
                     "%s should read as served by OpenSea" % name)
     # And the order of the signals: an unambiguous positive before a
-    # threshold (§17's classification-order trap).
+    # threshold (order signals by how much they prove).
     challenge = ("<html><head><title>Just a moment...</title></head><body>"
                  "<script src='https://challenges.cloudflare.com/turnstile/"
                  "v0/api.js'></script></body></html>")
@@ -623,10 +623,10 @@ def test_state_policy_is_complete():
     ok &= check(not page_flow.should_retry("empty"),
                 "an empty feed is a correct answer and must not be retried")
     ok &= check(not page_flow.counts_as_blocked("empty"),
-                "empty is exit 4, not exit 3 (§8)")
+                "empty is exit 4, not exit 3")
     ok &= check(page_flow.should_solve("challenge"),
                 "a challenge must reach the solver — and note that saying it "
-                "cannot be solved is the one sentence §19 forbids")
+                "cannot be solved is the one sentence this repo must never write")
     ok &= check(page_flow.counts_as_blocked("blocked"),
                 "blocked must count as blocked")
     # A state with no policy falls back to blocked, which is the safe
@@ -693,7 +693,7 @@ def test_cursors():
 
 
 def test_page_url_is_none():
-    """§7's layer 2 does not exist here, and saying so is the point."""
+    """URL-built pagination does not exist here, and saying so is the point."""
     group("page addresses")
     ok = True
     ok &= check(P.page_url("https://opensea.io/collection/x", 2) is None,
@@ -704,7 +704,7 @@ def test_page_url_is_none():
     refusal = page_flow.concurrency_refusal(
         "https://opensea.io/collection/x", "items")
     ok &= check(refusal and "cursor" in refusal,
-                "concurrency must be refused WITH the reason (§18)")
+                "concurrency must be refused WITH the reason")
     ok &= check(page_flow.concurrency_limit("", "items") == 1,
                 "every mode here is single-worker")
     return ok
@@ -874,7 +874,7 @@ def test_graphql_bodies():
 
 
 def test_graphql_errors_are_loud():
-    """The endpoint answers 200 with an `errors` array. Fail loudly (§8)."""
+    """The endpoint answers 200 with an `errors` array. Fail loudly."""
     group("graphql errors")
     ok = True
     payload = {"errors": [{"message": "Something went wrong"}], "data": None}
@@ -891,7 +891,7 @@ def test_endpoint_error_shapes():
     """Real captured responses for the shapes a page capture cannot show.
 
     A third-party audit on 2026-10-13 asked for exactly these, and the point
-    is that they are CAPTURED rather than written: §26 records a fixture
+    is that they are CAPTURED rather than written: a sibling recorded a fixture
     assembled from two captures that claimed something no response says.
     Each of these came back from the live endpoint that day.
 
@@ -913,7 +913,7 @@ def test_endpoint_error_shapes():
 
     # EVERY one of these came back HTTP 200. A caller that branches on the
     # status alone reads all four as success, which is why graphql_errors
-    # exists at all (§8, fail loudly).
+    # exists at all (fail loudly).
     for name, captured in edges.items():
         ok &= check(captured.get("status") == 200,
                     "%s came back HTTP %r — if the endpoint has started "
@@ -970,7 +970,7 @@ def test_endpoint_error_shapes():
 
 
 def test_graphql_and_state_agree():
-    """One normaliser, two routes — the claim this repo is built on (§21).
+    """One normaliser, two routes — the claim this repo is built on.
 
     Feeds the SAME objects through both entry points and asserts the rows are
     identical. The live version of this check measured 49 of 50 rows
@@ -1031,7 +1031,7 @@ def test_dom_fallback():
         ok &= check(row.price is None,
                     "a fallback row must not invent a price — the rendered "
                     "markup carries only formatted display text")
-    # And the §20 signal: a served page that links to items and parses to
+    # And the parser-failure signal: a served page that links to items and parses to
     # nothing is THIS PARSER'S bug, not an empty collection.
     ok &= check(page_flow.parsed_nothing_from_a_served_page(html, 0),
                 "a served page with links and no rows must be reported as a "
@@ -1091,7 +1091,7 @@ def test_a_dom_only_run_is_not_complete():
                 "an empty run is not a degraded run; it has its own states")
 
     # And every engine has to consult it, or they disagree about a run's
-    # status on the identical response (§6).
+    # status on the identical response.
     for name in ENGINES:
         source = _engine_source(name)
         ok &= check("page_flow.degraded_to_dom(" in source,
@@ -1100,7 +1100,7 @@ def test_a_dom_only_run_is_not_complete():
         # this check looked for the `state_answered = …` line, and a control
         # that removed the condition from the `ssr_used` expression left
         # that line untouched — so the suite stayed GREEN against the
-        # reverted fix. §26: a control that stays green is a hole in the
+        # reverted fix. A control that stays green is a hole in the
         # suite, not a pass.
         ok &= check("args.ssr_usable and state_answered" in source,
                     "%s computes ssr_used without `and state_answered`, so "
@@ -1124,7 +1124,7 @@ def test_output_contract():
     with tempfile.TemporaryDirectory() as tmp:
         prefix = os.path.join(tmp, "out")
         # A run that finds nothing writes NOTHING, so last night's good
-        # output survives (§8).
+        # output survives.
         with open(prefix + ".json", "w") as f:
             f.write('[{"sku": "yesterday"}]')
         rc = output_writer.save([], prefix, "both")
@@ -1182,7 +1182,7 @@ def test_output_contract():
 
 
 def test_page_and_position_are_unique():
-    """§18's arithmetic bug, pinned: `position` restarts on every page."""
+    """An arithmetic bug, pinned: `position` restarts on every page."""
     group("page and position")
     ok = True
     groups = []
@@ -1216,7 +1216,7 @@ def test_merge_is_page_ordered():
     forward, _, _ = output_writer.merge_pages([(1, rows_a), (2, rows_b)])
     backward, _, _ = output_writer.merge_pages([(2, rows_b), (1, rows_a)])
     ok &= check([r.sku for r in forward] == [r.sku for r in backward],
-                "the merged order depends on which page arrived first (§8)")
+                "the merged order depends on which page arrived first")
     ok &= check([r.sku for r in forward][:3] == [r.sku for r in rows_a],
                 "page 1's rows must come first")
     # is_deeper is inert here, and that is a measured property of the modes
@@ -1252,7 +1252,7 @@ def test_dedupe():
 ENGINES = ("playwright_scraper", "puppeteer_scraper", "selenium_scraper")
 
 # Flags one engine has and its twins do not, with the reason. The list IS the
-# documentation, so closing a difference fails this check too — §20's rule
+# documentation, so closing a difference fails this check too — the rule
 # that a parity check must assert in BOTH directions.
 FLAG_EXCEPTIONS = {
     "--chromium-path": ("puppeteer_scraper",),   # pyppeteer downloads its own
@@ -1299,7 +1299,7 @@ def _engine_flags(name):
 
 
 def test_a_throttle_is_not_a_block():
-    """§24's distinction, driven end to end against a FAKE driver.
+    """The throttle/block distinction, driven end to end against a FAKE driver.
 
     A refusal and a throttle want opposite responses: a block means a
     different exit, a throttle means the SAME exit and a longer wait.
@@ -1438,7 +1438,7 @@ def test_a_throttle_is_not_a_block():
         engine.time.sleep = real_sleep
 
     # The three engines must all carry the branch, or they disagree about a
-    # run's exit code (§6).
+    # run's exit code.
     for name in ENGINES:
         source = _engine_source(name)
         ok &= check("page_flow.is_throttle(" in source,
@@ -1472,7 +1472,7 @@ def test_engine_flag_parity():
                     "FLAG_EXCEPTIONS says %s is only on %s, but it is on %s"
                     % (flag, tuple(sorted(expected)), carriers))
 
-    # The family contract (§9), asserted against the primary engine.
+    # The family contract, asserted against the primary engine.
     contract = ("--url --pages --category --format --out --delay --retries "
                 "--retry-delay --concurrency --proxy --proxy-file "
                 "--proxy-rotate --proxy-shuffle --proxy-block-retries "
@@ -1487,7 +1487,7 @@ def test_engine_flag_parity():
 
     # A flag this repo BANS, scoped to the engines: a --country on a scraper
     # could disagree with the URL it was given. It is legitimate on
-    # fingerprint_client.py, which is why the check is scoped (§10).
+    # fingerprint_client.py, which is why the check is scoped.
     for name in ENGINES:
         ok &= check("--country" not in flags[name],
                     "%s has a --country flag; on this site the locale is a "
@@ -1503,12 +1503,12 @@ def test_retries_is_a_count_of_attempts():
     navigation at all and the engine then judges `about:blank` — 39 bytes —
     and reports a block. A third-party audit on 2026-10-13 passed
     `--retries 0`, got exit 3, and concluded this site was refusing us while
-    it served 250 rows to the same machine a minute later (§28).
+    it served 250 rows to the same machine a minute later.
 
     Read off DISK rather than through an import, deliberately: a check gated
     behind importing the engine skips for exactly the engines whose driver is
     absent from the venv, so a fix that reached one engine of three would
-    pass locally and fail in engine-smoke (§27.4).
+    pass locally and fail in engine-smoke.
     """
     group("--retries counts attempts")
     ok = True
@@ -1573,7 +1573,7 @@ def test_engine_constants_agree():
                     "the engines disagree about %s: %s — one engine "
                     "reporting a different threshold than its twins on the "
                     "identical run is exactly the drift the shared modules "
-                    "exist to prevent (§6)" % (constant, seen))
+                    "exist to prevent" % (constant, seen))
     return ok
 
 
@@ -1583,7 +1583,7 @@ def test_engines_import_their_driver_at_module_level():
     A sibling repo imported `launch`/`connect` inside the launch path, so the
     module imported cleanly with no pyppeteer installed: the group never
     skipped, and the CI job that exists to fail on unexpected skips could not
-    have caught a broken import (§10).
+    have caught a broken import.
     """
     group("module-level driver imports")
     ok = True
@@ -1615,7 +1615,7 @@ def test_engine_parity(skips):
     parameter is positional. Both crashed on their FIRST fetch, and it was
     invisible to import, `--help`, `compileall`, the undefined-name walk and
     400+ green assertions — because none of those calls a function the way a
-    live run does (§17).
+    live run does.
     """
     group("shared-module call signatures")
     ok = True
@@ -1684,7 +1684,7 @@ def test_no_undefined_names():
 
     A sibling repo's engine died with `NameError` on a line reached only
     while fetching, after an import had been removed. The module imported
-    cleanly, `--help` worked, `compileall` passed and CI was green (§10).
+    cleanly, `--help` worked, `compileall` passed and CI was green.
 
     Deliberately COARSE — one pool of bindings per module, no scope
     tracking — so it under-reports rather than inventing problems.
@@ -1746,11 +1746,11 @@ def test_no_undefined_names():
 def test_no_unreachable_statements():
     """A statement after return/raise/break/continue in the SAME block.
 
-    §22's check, which found the same fifteen lines in six sibling repos —
+    A check which found the same fifteen lines in six sibling repos —
     byte for byte, present since each one's first commit: a function whose
     `def` line had been lost, leaving its docstring and body absorbed into
     the end of the function above it. It parses, it imports, `--help` works,
-    `compileall` passes, and the §10 undefined-name walk cannot see it and
+    `compileall` passes, and the undefined-name walk cannot see it and
     SHOULD not — that walk pools every binding in a file rather than
     tracking scopes, so a name in the dead block resolves against a real
     parameter elsewhere. This is a second check, not a tightening of the
@@ -1779,11 +1779,11 @@ def test_no_unreachable_statements():
                                     "%s line %d: %s is unreachable — the "
                                     "statement above it on line %d always "
                                     "leaves the block. A lost `def` line "
-                                    "looks exactly like this (§22)."
+                                    "looks exactly like this."
                                     % (filename, dead.lineno,
                                        type(dead).__name__, statement.lineno))
                         break
-    # A binding check that binds nothing passes for the wrong reason (§22).
+    # A binding check that binds nothing passes for the wrong reason.
     ok &= check(scanned >= 10,
                 "the unreachable-statement walk only looked at %d file(s)"
                 % scanned)
@@ -1796,7 +1796,7 @@ def test_dockerfile_matches_its_entrypoint():
     All three repos in this family shipped an image that died with
     ModuleNotFoundError on every invocation, `--help` included, because
     `proxy_pool.py` was missing from the COPY list. CI never builds the
-    image, so nothing noticed (§10).
+    image, so nothing noticed.
     """
     group("dockerfile")
     ok = True
@@ -1855,7 +1855,7 @@ def test_dockerfile_matches_its_entrypoint():
 # A check that spells its own banned phrases has to exempt the file it lives
 # in — and three repos in this family did exactly that, leaving the one file
 # most likely to acquire a stray phrase or a pasted credential as the one
-# file nobody scanned (§22). Built this way, the scan covers itself.
+# file nobody scanned. Built this way, the scan covers itself.
 _A = "anti" + "detect"
 BANNED_PHRASES = (
     "cloud" + " browser",
@@ -1868,10 +1868,10 @@ BANNED_PHRASES = (
 
 
 def test_wording():
-    """§12's table, enforced. It reached two public repo DESCRIPTIONS while
+    """The banned-wording table, enforced. It reached two public repo DESCRIPTIONS while
     the suite scanned only files, so `.github/repo-metadata.yml` is scanned
     here too — a banned-wording check should cover the surfaces the repo
-    publishes, not only the files it contains (§21)."""
+    publishes, not only the files it contains."""
     group("wording")
     ok = True
     scanned = 0
@@ -1891,10 +1891,10 @@ def test_wording():
                 # No escapes. An escape would have to name the phrase it
                 # excuses, and naming it is using it — which is how this
                 # check's own escape clause became the only hit in the repo
-                # the moment the check started scanning its own file (§22).
+                # the moment the check started scanning its own file.
                 ok &= check(phrase.lower() not in text.lower(),
                             "%s contains the banned phrase %r — write "
-                            "'Scraping Browser API' instead (§12)"
+                            "'Scraping Browser API' instead"
                             % (os.path.relpath(path, REPO_ROOT), phrase))
     ok &= check(scanned > 10, "the wording scan looked at almost nothing")
     return ok
@@ -1905,7 +1905,10 @@ def test_env_example_matches_the_code():
     ok = True
     with open(os.path.join(REPO_ROOT, ".env.example"), encoding="utf-8") as f:
         example = f.read()
-    documented = set(re.findall(r"^([A-Z][A-Z0-9_]+)=", example, re.M))
+    # A variable documented as a commented-out example still counts as
+    # documented: OPENSEA_URL ships that way so a copy cannot take a run over.
+    documented = set(re.findall(r"^(?:#\s*)?([A-Z][A-Z0-9_]+)=", example,
+                                re.M))
     read = set(env_config.ENV_KEYS)
     ok &= check(documented == read,
                 "the .env.example and ENV_KEYS disagree: only in the example "
@@ -1917,7 +1920,7 @@ def test_env_example_matches_the_code():
                     "or OPENSEA_*)" % name)
 
     # A copied example must read as UNSET for every credential, and stay
-    # usable for the one value that is not one (§17).
+    # usable for the one value that is not one.
     import argparse as argparse_module
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, ".env")
@@ -1937,12 +1940,13 @@ def test_env_example_matches_the_code():
                         "a copied .env.example's CDP endpoint was read as "
                         "configured — it would connect with the literal "
                         "'{login}-zone-…' as its username and get a 401 a "
-                        "long way from its cause (§17)")
+                        "long way from its cause")
             ok &= check(namespace.proxy is None,
                         "a copied .env.example's proxy was read as configured")
-            ok &= check(namespace.url and namespace.url.startswith("https://"),
-                        "the example's non-credential default should stay "
-                        "usable")
+            ok &= check(namespace.url is None,
+                        "a copied .env.example set a default --url; it must "
+                        "ship commented out, because an environment URL used "
+                        "to override --collection and --mode collections")
         finally:
             for k in read:
                 os.environ.pop(k, None)
@@ -1957,14 +1961,14 @@ def test_credentials_never_reach_logs():
     # Built by concatenation on purpose: no LINE of this file then holds a
     # string shaped like a credentialled URL, so the committed-credential
     # check needs no allowlist entry for it — and an allowlist entry is the
-    # thing that would also let a real one through (§17).
+    # thing that would also let a real one through.
     secret = "hunter" + "2"
     url = "http://user:" + secret + "@exit.example.com:2334"
     masked = proxy_pool.mask(url)
     ok &= check("hunter2" not in masked, "mask() leaked a password")
     ok &= check("exit.example.com" in masked and "2334" in masked,
                 "mask() should KEEP host and port — which exit a run used is "
-                "the point of the log and is not the secret (§8)")
+                "the point of the log and is not the secret")
     # Globally, not once: a Playwright connection error repeats an endpoint
     # five times, and a masker that handles the first prints the password the
     # other four times while looking like it works.
@@ -1990,7 +1994,7 @@ def test_credentials_never_reach_logs():
 
 
 def test_ci_checks_is_wired_up():
-    """ONE implementation, invoked from both CI and this suite (§17).
+    """ONE implementation, invoked from both CI and this suite.
 
     Three repos in this family shipped `.github/ci_checks.py` that NOTHING
     ran, while the workflow carried an inline grep doing a narrower version
@@ -2007,7 +2011,7 @@ def test_ci_checks_is_wired_up():
     # absent — never on a file inside it being missing. Two sibling repos run
     # this suite INSIDE their Docker image, which deliberately carries no
     # `.github`, so a check that reads a workflow is correct in the repo and
-    # red in the image (§22). The narrowness is the point: a check that
+    # red in the image. The narrowness is the point: a check that
     # quietly starts passing once its input disappears is the same failure
     # wearing a new face, so `.github` present with a file missing is still a
     # failure. Before this existed the whole suite died here with
@@ -2036,6 +2040,36 @@ def test_ci_checks_is_wired_up():
     ok &= check(result.returncode == 0,
                 "the committed-credential check FAILS on this repository: "
                 "%s" % (result.stdout + result.stderr)[-400:])
+
+    # Its exclusions are judged RELATIVE to the repository. Judged on the
+    # absolute path, a clone made under a directory called `live`,
+    # `captures` or `venv-work` skipped every file and printed "nothing
+    # credential-shaped" having read nothing. A virtualenv inside the repo
+    # (recognised by pyvenv.cfg, whatever it is called) is still skipped.
+    import shutil
+    key = "ab" * 16
+    with tempfile.TemporaryDirectory() as tmp:
+        clone = os.path.join(tmp, "venv-work", "live", "captures", "repo")
+        os.makedirs(os.path.join(clone, ".github"))
+        shutil.copy(script, os.path.join(clone, ".github", "ci_checks.py"))
+        with open(os.path.join(clone, "planted_cfg.py"), "w") as f:
+            f.write("API = %r\n" % key)
+        env_dir = os.path.join(clone, "myenv", "lib")
+        os.makedirs(env_dir)
+        with open(os.path.join(clone, "myenv", "pyvenv.cfg"), "w") as f:
+            f.write("home = /usr\n")
+        with open(os.path.join(env_dir, "vendored.py"), "w") as f:
+            f.write("X = %r\n" % key)
+        planted = subprocess.run(
+            [sys.executable, os.path.join(clone, ".github", "ci_checks.py"),
+             "--secret-check"], cwd=clone, capture_output=True, text=True)
+    out = planted.stdout + planted.stderr
+    ok &= check(planted.returncode == 1 and "planted_cfg.py" in out,
+                "a key planted in a clone under live/captures/venv-* parents "
+                "was not found: %s" % out[-300:])
+    ok &= check("vendored.py" not in out,
+                "the scan walked into a virtualenv (pyvenv.cfg) inside the "
+                "repository")
     return ok
 
 
@@ -2070,7 +2104,7 @@ def test_sample_output():
 
 
 def test_no_dead_policy_constants():
-    """A policy constant nothing reads is the same defect as dead code (§17)."""
+    """A policy constant nothing reads is the same defect as dead code."""
     group("policy constants")
     ok = True
     sources = {name: _engine_source(name) for name in ENGINES}
@@ -2080,7 +2114,7 @@ def test_no_dead_policy_constants():
     # set to 4, and read by NOTHING — the engines take their with-pool
     # budget from `--proxy-block-retries` instead. A check with a hand-kept
     # list only ever covers what someone remembered to add, which is the
-    # same failure as the policy it is checking for (§17).
+    # same failure as the policy it is checking for.
     policy = [n for n in dir(page_flow)
               if n.isupper() and not n.startswith("_")
               and isinstance(getattr(page_flow, n), (bool, int))
@@ -2088,15 +2122,464 @@ def test_no_dead_policy_constants():
                             "SCROLL_MAX_ROUNDS", "SCROLL_STABLE_ROUNDS")]
     ok &= check(len(policy) >= 3,
                 "the policy-constant scan found almost nothing to check")
+    # A constant page_flow reads ITSELF, inside an object every engine must
+    # construct, is consumed through that object. SOLVES_PER_PAGE is the
+    # default limit of SolveBudget; the engines read it by building one.
+    consumed_through = {"SOLVES_PER_PAGE": "page_flow.SolveBudget("}
     for constant in sorted(policy):
+        token = consumed_through.get(constant, constant)
         consumers = [name for name, text in sources.items()
-                     if constant in text]
+                     if token in text]
         ok &= check(len(consumers) == len(ENGINES),
                     "page_flow.%s is read by %s and not by all three engines "
                     "— a policy that looks enforced and is not is worse than "
-                    "no policy (§17). Either every engine consults it, or it "
+                    "no policy. Either every engine consults it, or it "
                     "should not exist." % (constant, consumers or "nothing"))
     print("  policy constants checked: %s" % sorted(policy))
+    return ok
+
+
+# ---------------------------------------------------------------------------
+# Engines driven with their DRIVER STUBBED, in a subprocess
+# ---------------------------------------------------------------------------
+# These run in the core-only venv too: a check that needs the driver
+# installed skips exactly where nobody looks, and the three things below
+# (the solve budget, OPENSEA_URL versus the builder flags, numeric flag
+# validation) are logic, not browser behaviour. A subprocess, so the stub
+# modules never leak into the rest of this suite's imports.
+_STUB_HARNESS = r"""
+import json, os, sys, tempfile, time, types
+from unittest import mock
+
+def _module(name, **attrs):
+    m = types.ModuleType(name)
+    m.__dict__.update(attrs)
+    sys.modules[name] = m
+    return m
+
+class _E(Exception):
+    pass
+
+engine, scenario = sys.argv[1], sys.argv[2]
+if engine == "playwright_scraper":
+    _module("playwright")
+    _module("playwright.sync_api", sync_playwright=mock.MagicMock(),
+            Error=_E, TimeoutError=type("PWTimeout", (_E,), {}))
+elif engine == "puppeteer_scraper":
+    _module("pyppeteer", launch=mock.MagicMock(), connect=mock.MagicMock())
+else:
+    _module("selenium", webdriver=mock.MagicMock())
+    _module("selenium.webdriver", Chrome=mock.MagicMock())
+    _module("selenium.common")
+    _module("selenium.common.exceptions", WebDriverException=_E)
+    _module("selenium.webdriver.chrome")
+    _module("selenium.webdriver.chrome.options", Options=mock.MagicMock())
+    _module("selenium.webdriver.common")
+    _module("selenium.webdriver.common.by", By=mock.MagicMock())
+
+sys.path.insert(0, os.getcwd())
+mod = __import__(engine)
+
+if scenario == "budget":
+    time.sleep = lambda *a, **k: None
+    out = os.path.join(tempfile.mkdtemp(), "out")
+    sys.argv = [engine, "--url", "https://opensea.io/collection/x",
+                "--out", out]
+    args = mod.parse_args()
+    args.twocaptcha_key = "stub-never-sent"
+    calls = []
+    challenge = types.SimpleNamespace(
+        kind="reCAPTCHA v2", source="stub", sitekey="stub", action=None,
+        is_turnstile=False, solved_user_agent=None)
+    def solver(*a, **k):
+        calls.append(1)
+        return "stub-token"
+    html = "<html><body>challenge</body></html>"
+    for name, value in (("solve_recaptcha", solver),
+                        ("reconcile_detections", lambda *a, **k: challenge),
+                        ("detect_recaptcha_v3", lambda *a, **k: None),
+                        ("detect_recaptcha_in_page", lambda *a, **k: None),
+                        ("_classify", lambda *a, **k: "challenge"),
+                        ("_count", lambda *a, **k: 0),
+                        ("_content_when_settled", lambda *a, **k: html),
+                        ("_content", lambda *a, **k: html),
+                        ("_current_url",
+                         lambda *a, **k: "https://opensea.io/collection/x"),
+                        ("_document_status", lambda *a, **k: 403)):
+        if hasattr(mod, name):
+            setattr(mod, name, value)
+    mod._fetch_first_page(mock.MagicMock(), args, None)
+    print(json.dumps({"solves": len(calls)}))
+elif scenario == "envurl":
+    os.environ["OPENSEA_URL"] = "https://opensea.io/collection/boredapeyachtclub"
+    result = {}
+    for label, argv in (("collection", ["--collection", "pudgypenguins"]),
+                        ("category", ["--category", "pudgypenguins"]),
+                        ("ranking", ["--mode", "collections"]),
+                        ("bare", []),
+                        ("typed", ["--url",
+                                   "https://opensea.io/collection/azuki"])):
+        sys.argv = [engine] + argv
+        try:
+            result[label] = mod.parse_args().url
+        except SystemExit as e:
+            result[label] = "exit %s" % e.code
+    print(json.dumps(result))
+elif scenario == "flags":
+    result = {}
+    for flag, value in (("--pages", "0"), ("--limit", "0"), ("--delay", "-1"),
+                        ("--retry-delay", "-1"), ("--concurrency", "0"),
+                        ("--proxy-block-retries", "-1"), ("--retries", "0")):
+        sys.argv = [engine, "--url", "https://opensea.io/collection/x",
+                    flag, value]
+        err = __import__("io").StringIO()
+        try:
+            with mock.patch("sys.stderr", err):
+                mod.parse_args()
+            result[flag] = "accepted"
+        except SystemExit as e:
+            text = err.getvalue()
+            result[flag] = ("refused" if e.code == 2 and "error:" in text
+                            and flag in text.split("error:", 1)[1]
+                            else "exit %s: %s" % (e.code, text[-200:]))
+    print(json.dumps(result))
+"""
+
+
+def _drive_engine(engine, scenario):
+    """Run one scenario of _STUB_HARNESS; returns the JSON it printed."""
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    for key in env_config.ENV_KEYS:
+        env.pop(key, None)
+    r = subprocess.run([sys.executable, "-c", _STUB_HARNESS, engine, scenario],
+                       cwd=REPO_ROOT, capture_output=True, text=True,
+                       env=env, timeout=120)
+    lines = [l for l in r.stdout.splitlines() if l.startswith("{")]
+    if r.returncode != 0 or not lines:
+        return {"error": (r.stderr or r.stdout)[-600:]}
+    return json.loads(lines[-1])
+
+
+def test_solve_budget_covers_every_call_site():
+    """One paid solve per page, however many times the page comes back.
+
+    Each engine checks for a challenge twice per fetch attempt — before the
+    page is classified and after — and re-fetches up to
+    BLOCK_RETRIES_WITHOUT_POOL times. Only the second check used to be
+    counted, so a page that kept coming back as a challenge bought a solve
+    on every attempt: 5 solver calls against a limit of 1, in all three
+    engines. Driven with the solver stubbed, so nothing is ever sent.
+    """
+    group("captcha solve budget")
+    ok = True
+    for engine in ENGINES:
+        result = _drive_engine(engine, "budget")
+        ok &= check("error" not in result,
+                    "%s: the budget harness did not run: %s"
+                    % (engine, result.get("error")))
+        ok &= check(result.get("solves") == page_flow.SOLVES_PER_PAGE,
+                    "%s bought %s solve(s) for one page that kept coming back "
+                    "as a challenge; the limit is %d per page"
+                    % (engine, result.get("solves"), page_flow.SOLVES_PER_PAGE))
+    budget = page_flow.SolveBudget(1)
+    ok &= check(budget.spend() and not budget.spend() and budget.remaining() == 0,
+                "SolveBudget(1) must allow exactly one purchase")
+    return ok
+
+
+def test_env_url_never_outranks_builder_flags():
+    """OPENSEA_URL is a default for a bare run, not a rival to --collection.
+
+    With the URL .env.example used to ship, `--collection pudgypenguins`
+    silently scraped Bored Apes and `--mode collections` was refused,
+    because the environment filled --url before the builder flags ran.
+    """
+    group("OPENSEA_URL versus the builder flags")
+    ok = True
+    for engine in ENGINES:
+        r = _drive_engine(engine, "envurl")
+        ok &= check("error" not in r, "%s: the env-URL harness did not run: %s"
+                    % (engine, r.get("error")))
+        ok &= check(str(r.get("collection", "")).endswith(
+                        "/collection/pudgypenguins"),
+                    "%s: --collection pudgypenguins with OPENSEA_URL set read "
+                    "%r" % (engine, r.get("collection")))
+        ok &= check(str(r.get("category", "")).endswith(
+                        "/collection/pudgypenguins"),
+                    "%s: --category pudgypenguins with OPENSEA_URL set read "
+                    "%r" % (engine, r.get("category")))
+        ok &= check(str(r.get("ranking", "")).endswith("/collections"),
+                    "%s: --mode collections with OPENSEA_URL set gave %r"
+                    % (engine, r.get("ranking")))
+        ok &= check(str(r.get("bare", "")).endswith("/boredapeyachtclub"),
+                    "%s: a bare run should still use OPENSEA_URL, got %r"
+                    % (engine, r.get("bare")))
+        ok &= check(str(r.get("typed", "")).endswith("/collection/azuki"),
+                    "%s: a typed --url must win over OPENSEA_URL, got %r"
+                    % (engine, r.get("typed")))
+    return ok
+
+
+def test_numeric_flags_refuse_nonsense():
+    """Counts and delays below their floor are a usage error naming the flag."""
+    group("numeric flag validation")
+    ok = True
+    for engine in ENGINES:
+        r = _drive_engine(engine, "flags")
+        ok &= check("error" not in r, "%s: the flag harness did not run: %s"
+                    % (engine, r.get("error")))
+        for flag in ("--pages", "--limit", "--delay", "--retry-delay",
+                     "--concurrency", "--proxy-block-retries", "--retries"):
+            ok &= check(r.get(flag) == "refused",
+                        "%s %s with a value below its floor: %r (expected an "
+                        "argparse error naming the flag)"
+                        % (engine, flag, r.get(flag)))
+    # The Scraper API client counts EXTRA attempts, so 0 is legal there and
+    # only a negative is refused.
+    for value, expect in (("-1", 2), ("0", None)):
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.argv=['x','--url','https://opensea.io/collection/x',"
+             "'--retries','%s']; import scraper_api_client as s; s.parse_args();"
+             "print('parsed')" % value],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+        if expect == 2:
+            ok &= check(r.returncode == 2 and "--retries" in r.stderr,
+                        "scraper_api_client --retries -1 should be a usage "
+                        "error, got rc %s" % r.returncode)
+        else:
+            ok &= check(r.returncode == 0 and "parsed" in r.stdout,
+                        "scraper_api_client --retries 0 (no extra attempts) "
+                        "should parse, got rc %s %s" % (r.returncode,
+                                                        r.stderr[-200:]))
+    return ok
+
+
+def test_writes_are_atomic():
+    """A failure while writing must leave the previous good file intact.
+
+    `open(path, "w")` truncated before writing, so an error inside json.dump
+    left `out.json` 12 bytes of invalid JSON and `out.csv` 0 bytes. Modes are
+    pinned under three umasks, because under the default 022 every candidate
+    rule agrees and only a non-default one tells them apart.
+    """
+    group("atomic writes")
+    ok = True
+    from unittest import mock
+    rows = [output_writer.Item(sku="a", title="good", price=1.0)]
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "out")
+        with contextlib.redirect_stdout(io.StringIO()):
+            output_writer.finish_run(
+                rows, out, "both", False, blocked=False,
+                stop_reason="completed", pages_requested=1,
+                pages_completed=1, start_url="u", final_url="u",
+                mode="items")
+        before = {ext: open(out + ext, "rb").read()
+                  for ext in (".json", ".csv", ".meta.json")}
+
+        def boom(*a, **k):
+            raise OSError("disk full (injected)")
+        for target, ext, call in (
+                ("json.dump", ".json",
+                 lambda: output_writer.write_json(rows, out + ".json")),
+                ("csv.DictWriter.writerow", ".csv",
+                 lambda: output_writer.write_csv(rows, out + ".csv",
+                                                 output_writer.Item)),
+                ("json.dump", ".meta.json",
+                 lambda: output_writer.write_run_meta(out, {"status": "x"}))):
+            raised = False
+            with mock.patch(target, boom), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    call()
+                except OSError:
+                    raised = True
+            ok &= check(raised, "the injected failure in %s did not surface"
+                        % target)
+            ok &= check(open(out + ext, "rb").read() == before[ext],
+                        "a failure inside %s destroyed the previous good %s"
+                        % (target, ext))
+        leftovers = [n for n in os.listdir(tmp) if n.endswith(".tmp")]
+        ok &= check(not leftovers, "a failed write left temp files behind: %s"
+                    % leftovers)
+
+        for umask in (0o022, 0o002, 0o077):
+            new_path = os.path.join(tmp, "fresh_%o.json" % umask)
+            old = os.umask(umask)
+            try:
+                output_writer.write_json(rows, new_path)
+            finally:
+                os.umask(old)
+            mode = os.stat(new_path).st_mode & 0o777
+            ok &= check(mode == 0o666 & ~umask,
+                        "a new file under umask %03o got mode %03o, expected "
+                        "%03o (what open() would give)"
+                        % (umask, mode, 0o666 & ~umask))
+        kept = os.path.join(tmp, "kept.json")
+        output_writer.write_json(rows, kept)
+        os.chmod(kept, 0o640)
+        output_writer.write_json(rows, kept)
+        ok &= check(os.stat(kept).st_mode & 0o777 == 0o640,
+                    "rewriting an existing file did not keep its mode")
+    return ok
+
+
+def test_csv_formula_cells_are_escaped():
+    """A formula-shaped string is text in the CSV, untouched in the JSON."""
+    group("CSV formula neutralisation")
+    ok = True
+    evil = '=HYPERLINK("http://example.invalid","x")'
+    rows = [output_writer.Collection(sku="c", title=evil, floor_change=-5.0,
+                                     category="@art")]
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "out")
+        with contextlib.redirect_stdout(io.StringIO()):
+            output_writer.finish_run(
+                rows, out, "both", False, blocked=False,
+                stop_reason="completed", pages_requested=1,
+                pages_completed=1, start_url="u", final_url="u",
+                mode="collections",
+                extra={"csv_cells_escaped": "caller wins", "sort": None})
+        with open(out + ".csv", newline="", encoding="utf-8") as f:
+            row = next(csv_module.DictReader(f))
+        with open(out + ".json", encoding="utf-8") as f:
+            data = json.load(f)[0]
+        with open(out + ".meta.json", encoding="utf-8") as f:
+            meta = json.load(f)
+        ok &= check(row["title"] == "'" + evil,
+                    "a formula-shaped title reached the CSV unescaped: %r"
+                    % row["title"])
+        ok &= check(row["category"] == "'@art",
+                    "an @-led cell reached the CSV unescaped")
+        ok &= check(row["floor_change"] == "-5.0",
+                    "a negative NUMBER was escaped; only strings may be")
+        ok &= check(data["title"] == evil,
+                    "the JSON output must keep the site's bytes")
+        ok &= check(meta.get("csv_cells_escaped") == "caller wins",
+                    "csv_cells_escaped must merge UNDER the caller's extra")
+        with contextlib.redirect_stdout(io.StringIO()):
+            output_writer.finish_run(
+                rows, out, "csv", False, blocked=False,
+                stop_reason="completed", pages_requested=1,
+                pages_completed=1, start_url="u", final_url="u",
+                mode="collections")
+        with open(out + ".meta.json", encoding="utf-8") as f:
+            ok &= check(json.load(f).get("csv_cells_escaped") == 2,
+                        "the sidecar must count the escaped cells")
+        listed = output_writer.Item(sku="i", traits=["-x", "y"])
+        with contextlib.redirect_stdout(io.StringIO()):
+            n = output_writer.write_csv([listed], out + "2.csv",
+                                        output_writer.Item)
+        ok &= check(n == 1, "a joined list cell starting with '-' must be "
+                    "escaped too (escape AFTER the list serialiser)")
+    return ok
+
+
+def test_diff_runs_tracks_every_mode():
+    """diff_runs compares columns each mode's row class really has."""
+    import diff_runs
+    group("diff_runs per mode")
+    ok = True
+    for mode, cls in output_writer.ROW_CLASS_BY_MODE.items():
+        names = {f.name for f in dataclass_fields(cls)}
+        tracked = diff_runs.TRACKED_FIELDS_BY_MODE.get(mode)
+        ok &= check(bool(tracked), "diff_runs tracks nothing for --mode %s"
+                    % mode)
+        missing = [f for f in (tracked or ()) if f not in names]
+        ok &= check(not missing, "diff_runs tracks %s for --mode %s, which %s "
+                    "does not have" % (missing, mode, cls.__name__))
+        counts = diff_runs.COUNT_FIELDS_BY_MODE.get(mode, ())
+        ok &= check(set(counts) <= set(tracked or ()),
+                    "a %s count field is not tracked" % mode)
+    planted = {
+        "items": ({"sku": "a", "price": 1.0, "best_offer": None},
+                  {"sku": "a", "price": 2.0, "best_offer": None}),
+        "collections": ({"sku": "c", "volume": 100.0, "top_offer": 1.0},
+                        {"sku": "c", "volume": 5000.0, "top_offer": 1.0}),
+        "activity": ({"sku": "e", "event_type": "SALE", "to_address": "0x1"},
+                     {"sku": "e", "event_type": "TRANSFER",
+                      "to_address": "0x1"}),
+    }
+    for mode, (before, after) in planted.items():
+        result = diff_runs.diff_products([before], [after], mode=mode)
+        ok &= check(len(result["changed"]) == 1,
+                    "a planted change in a %s run surfaced as %d changed"
+                    % (mode, len(result["changed"])))
+        inferred = diff_runs.diff_products([before], [after])
+        ok &= check(inferred["mode"] == mode,
+                    "diff_runs inferred %r from %s rows"
+                    % (inferred["mode"], mode))
+    return ok
+
+
+def test_gitignore_covers_dumps_and_keeps_shipped_files():
+    """Dumps and scratch output are ignored; shipped files are not."""
+    group(".gitignore")
+    ok = True
+    if not os.path.isdir(os.path.join(REPO_ROOT, ".git")):
+        print("  SKIP  not a git checkout")
+        return ok
+
+    def ignored(path):
+        return subprocess.run(["git", "check-ignore", "-q", path],
+                              cwd=REPO_ROOT).returncode == 0
+    for path in ("snap.page2", "x.json.page2", "out/a", "output/a", "runs/a",
+                 "results/a", "tmp/a", "dumps/a", "page.html", ".env",
+                 ".env.bak", ".env.local", "live/a.html", "captures/a.html"):
+        ok &= check(ignored(path), "%s is not ignored" % path)
+    for path in ("sample_output.json", "sample_output.csv",
+                 "fixtures_generated.json", ".env.example",
+                 "tests/test_smoke.py", ".github/ci_checks.py",
+                 "smoke_test.py"):
+        ok &= check(not ignored(path), "%s is ignored but ships" % path)
+    return ok
+
+
+def test_no_private_citations():
+    """Shipped files state their rules in their own words.
+
+    They used to cite section numbers of an internal document nobody outside
+    can open. The banned tokens are assembled from pieces so this file does
+    not match itself.
+    """
+    group("no private citations")
+    ok = True
+    section = chr(0xA7)
+    banned = [re.compile(re.escape(section) + r"\s*\d"),
+              re.compile(re.escape("CLAUDE" + ".md")),
+              re.compile("claude" + "_2scraper"),
+              re.compile("2scraper" + "_repo_rules"),
+              re.compile(r"(?i)\b(?:play" + r"book|tem" + r"plate)\s+"
+                         + re.escape(section))]
+    try:
+        tracked = subprocess.run(["git", "ls-files"], cwd=REPO_ROOT,
+                                 capture_output=True, text=True,
+                                 check=True).stdout.split()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        tracked = [os.path.relpath(os.path.join(d, n), REPO_ROOT)
+                   for d, _, ns in os.walk(REPO_ROOT)
+                   if ".git" not in d.split(os.sep) for n in ns]
+    hits, scanned = [], 0
+    for rel in tracked:
+        path = os.path.join(REPO_ROOT, rel)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except (UnicodeDecodeError, OSError):
+            continue
+        scanned += 1
+        for pattern in banned:
+            m = pattern.search(text)
+            if m:
+                hits.append("%s: %r" % (rel, m.group(0)))
+                break
+    ok &= check(scanned > 10, "the citation scan read only %d files" % scanned)
+    ok &= check(not hits, "private citations in shipped files: %s"
+                % hits[:10])
     return ok
 
 
@@ -2259,6 +2742,14 @@ def main():
     ok &= test_x_debug_header_is_redacted()
     ok &= test_scraper_api_payload_and_status()
     ok &= test_engine_modules_import(skips)
+    ok &= test_solve_budget_covers_every_call_site()
+    ok &= test_env_url_never_outranks_builder_flags()
+    ok &= test_numeric_flags_refuse_nonsense()
+    ok &= test_writes_are_atomic()
+    ok &= test_csv_formula_cells_are_escaped()
+    ok &= test_diff_runs_tracks_every_mode()
+    ok &= test_no_private_citations()
+    ok &= test_gitignore_covers_dumps_and_keeps_shipped_files()
 
     passed = _total_checks - len(_failures)
     if passed < CLAIMED_CHECK_FLOOR:

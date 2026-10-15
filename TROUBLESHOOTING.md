@@ -214,9 +214,9 @@ one. Without that rule the run would connect to `cb.2captcha.com` with the
 literal string `{login}-zone-…` as its username and get a 401 a long way
 from its cause.
 
-Scraping Browser profile credentials live about a day, so a `ws://` endpoint
-you pasted yesterday is stale today — get a fresh one from the dashboard
-rather than debugging the old one.
+Scraping Browser profile credentials expire, and how long they last varies.
+A 401 on connect means the endpoint or its profile needs refreshing — get a
+fresh one from the dashboard rather than debugging the old one.
 
 ---
 

@@ -25,7 +25,7 @@ scripts this repo replaced carried a hardcoded
 and is not a credential. It appears NOWHERE on the site today: 0 occurrences
 across twelve captures, the homepage, and the `/login` and `/signup` routes
 (both of which 404 — signing in is a modal). So it was either stale or never
-measured, and it is not evidence that a challenge is configured (§13).
+measured, and it is not evidence that a challenge is configured.
 
 What the absence means is "no challenge was met", NOT "no challenge can be". The
 site sits behind Cloudflare — `server: cloudflare` and a `cf-ray` header on
@@ -33,7 +33,7 @@ every response — and a Cloudflare managed challenge renders a Turnstile,
 which 2Captcha solves with `TurnstileTaskProxyless`. The sentence this
 family is never entitled to write is that a captcha here cannot be solved;
 the one it is entitled to is "this repo implements X", which is what the
-list below is (§19).
+list below is.
 
 IMPLEMENTED HERE
 ----------------
@@ -829,8 +829,8 @@ def solve_recaptcha(challenge: CaptchaChallenge, twocaptcha_api_key: Optional[st
                      api_version: str = "v2", min_score: float = 0.7) -> str:
     """Public entry point: solve `challenge` through 2captcha and return the token.
 
-    There used to be a `use_antidetect` branch here, behind a CLI flag of the
-    same name, that POSTed to a hardcoded local "solve-captcha" endpoint.
+    There used to be a second branch here, behind a CLI flag of its own,
+    that POSTed to a hardcoded local "solve-captcha" endpoint.
     It was removed before publishing: that endpoint was a placeholder for a
     product that does not exist under that name, so the flag could not work for
     anyone who set it, and the real "the browser solves it for you" path is

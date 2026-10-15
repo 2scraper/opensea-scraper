@@ -15,8 +15,7 @@ Three modes, three row classes
                         a sale, a listing, an offer, a transfer or a mint
 
 Unlike most of this family, these are three genuinely different KINDS of
-thing rather than three views of one, so they get three dataclasses (§9's
-allowance, which amazon-scraper spends on `Review`). What they share is the
+thing rather than three views of one, so they get three dataclasses. What they share is the
 family prefix — `source`, `scraped_at`, `url`, `sku`, `title` — byte-
 identical and in the same order in all three, so one column name works
 across the family and across the modes. `diff_runs.py` refuses to compare
@@ -73,11 +72,14 @@ The currency is a TOKEN SYMBOL, not ISO 4217
 actually denominated in — and never a defaulted "USD". The dollar figure the
 site computes beside it is `price_usd`, in its own column, so a consumer can
 tell an exact on-chain amount from a conversion that moves with the market.
-§4's rule reads the same here as it does with fiat: the structured source
+The rule reads the same here as it does with fiat: the structured source
 names the currency, so it is a fact and is never overwritten from the DOM.
 """
+import contextlib
 import csv
 import json
+import os
+import tempfile
 from dataclasses import dataclass, asdict, field, fields
 from datetime import datetime, timezone
 from typing import Optional, List, Set, Sequence, Any, Type
@@ -116,7 +118,7 @@ class Item:
     currency: Optional[str] = None
     # The site's own dollar conversion of `price`, which moves with the token
     # even when the listing does not. A separate column precisely so the two
-    # are never confused (§8: never present a guess as a fact — this one is
+    # are never confused (never present a guess as a fact — this one is
     # the site's guess, clearly labelled).
     price_usd: Optional[float] = None
     # The highest standing bid, same three-column shape. An offer is what
@@ -162,21 +164,21 @@ class Item:
     # flags the account. Both are the site's assertion, carried through
     # rather than acted on.
     #
-    # NEITHER HAS EVER BEEN SEEN TRUE, and §20 says to write that down rather
+    # NEITHER HAS EVER BEEN SEEN TRUE, and that is written down here rather
     # than let a column look verified because it is always populated.
     # Measured 2026-09-17: 3,400 items — 1,000 under the price ordering
     # across ten collections, and 2,400 under the created ordering across
     # four — came back `False` on both, with not one True.
     #
     # The price-ordered half of that proves nothing on its own and is the
-    # §20 mistake made deliberately, then corrected: an item with a live
+    # mistake made deliberately, then corrected: an item with a live
     # listing is by definition not hidden, so looking for a delisting among
     # listed items is looking where it cannot be. The created-ordered scan is
     # the one that counts, and it found none either.
     #
     # So the open question, unresolved: either OpenSea excludes hidden items
     # from `collectionItems` altogether — which would make this column a
-    # constant and, by §9, one that should not exist — or they are simply
+    # constant, and a column that is always the same should not exist — or they are simply
     # rarer than 2,400 items of four blue-chip collections. A `False` here is
     # therefore LESS PROVEN than a `True` would be, and a consumer should not
     # read it as "OpenSea has checked and cleared this item".
@@ -186,7 +188,7 @@ class Item:
     # --- provenance --------------------------------------------------------
     # WHICH route built this row. Never a guess presented as a fact, and
     # `diff_runs.py` reports a difference that comes with a `data_source`
-    # difference as `source_changed` rather than as a change (§8).
+    # difference as `source_changed` rather than as a change.
     #
     #   ssr      the page's own server-rendered state — page 1 of a run
     #   graphql  the site's own GraphQL endpoint, which is what pages 2..N
@@ -368,7 +370,7 @@ def merge_pages(groups: Sequence[Any], key: str = "sku") -> tuple:
     Pages really are sequential on this site — page N+1's cursor comes out of
     page N — so this costs nothing and keeps the family's contract: dedupe
     that mutates a running set inside the loop makes the OUTPUT depend on
-    which page finished first (§8).
+    which page finished first.
 
     The upgrade-in-place rule the family carries is inert here — see
     `is_deeper`, which is False on every mode this repo has, because no run
@@ -420,12 +422,88 @@ def _csv_value(v: Any) -> Any:
     return v
 
 
+@contextlib.contextmanager
+def _atomic(path: str, newline: Optional[str] = None):
+    """Write to a temporary file beside `path`, then rename over it.
+
+    `open(path, "w")` truncates before a single byte is written, so a crash,
+    a kill, a full disk or a Ctrl-C halfway through `json.dump` leaves a
+    SHORTER file where a complete one was, and the previous good run is
+    destroyed by the attempt to replace it. Reproduced here before this
+    existed: an error injected inside `json.dump` left `out.json` 12 bytes of
+    invalid JSON, and `out.csv` 0 bytes. The sidecar matters most, because it
+    is the file a consumer branches on.
+
+    * the temp file goes in the target's OWN directory, because `os.replace`
+      is atomic only within one filesystem;
+    * `fsync` before the rename makes the bytes durable, not merely visible;
+    * `newline` is passed through because the csv module needs `newline=""`;
+    * `NamedTemporaryFile` creates at 0600 and `os.replace` keeps that mode,
+      so an existing target keeps ITS mode and a new one gets exactly what
+      `open()` would have given it (`0o666 & ~umask`) — never a flat 0644,
+      which would narrow 0664 under umask 002.
+
+    Each file is replaced atomically on its own; the JSON, CSV and sidecar
+    are not replaced as one set.
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline=newline, dir=directory,
+        prefix=os.path.basename(path) + ".", suffix=".tmp", delete=False)
+    try:
+        with handle:
+            yield handle
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except OSError:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
+        os.chmod(handle.name, mode)
+        os.replace(handle.name, path)
+    except BaseException:
+        # Including KeyboardInterrupt: an interrupted run must not leave
+        # `out.json.ab12cd.tmp` behind beside the good file.
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
+        raise
+
+
+# A spreadsheet treats a cell beginning with one of these as a FORMULA rather
+# than as text, and every string in these rows was written by whoever named
+# the collection or the NFT. The tab and the two newlines are here because
+# some readers strip a leading one and then execute whatever followed it.
+CSV_FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+# Excel, Google Sheets and LibreOffice read a leading apostrophe as "the rest
+# of this cell is text" and do not display it. A consumer parsing the file
+# with the `csv` module DOES see it, which is why the count goes into the
+# sidecar as `csv_cells_escaped`.
+CSV_FORMULA_ESCAPE = "'"
+
+
+def _csv_escape(v: Any):
+    """Neutralise a formula-shaped cell. Returns (value, was_escaped).
+
+    Only STRINGS are touched: escaping a number would turn `-5.0` into text
+    and break every sum over the column (`floor_change` is negative on any
+    falling collection). CSV only — the JSON output keeps the site's bytes.
+    """
+    if isinstance(v, str) and v.startswith(CSV_FORMULA_LEADS):
+        return CSV_FORMULA_ESCAPE + v, True
+    return v, False
+
+
 def write_json(rows: Sequence[Any], path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+    with _atomic(path) as f:
         json.dump([asdict(r) for r in rows], f, ensure_ascii=False, indent=2)
 
 
-def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Product) -> None:
+def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Product) -> int:
     # An empty result still gets the header row. A zero-byte file makes a
     # consumer fail on read (no columns to parse) instead of reading a valid
     # table with zero rows — and "an empty result is still a well-formed
@@ -433,12 +511,23 @@ def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Product) -> None:
     #
     # The header comes from `row_cls`, not from the first row, so an empty
     # run still writes the columns of the mode that produced it.
+    #
+    # Returns how many cells were formula-escaped.
     fieldnames = [f.name for f in fields(row_cls)]
-    with open(path, "w", encoding="utf-8", newline="") as f:
+    escaped = 0
+    with _atomic(path, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in rows:
-            writer.writerow({k: _csv_value(v) for k, v in asdict(r).items()})
+            row = {}
+            for k, v in asdict(r).items():
+                # AFTER the list serialiser: a joined list is text too, and
+                # its first element can be formula-shaped.
+                value, was_escaped = _csv_escape(_csv_value(v))
+                escaped += was_escaped
+                row[k] = value
+            writer.writerow(row)
+    return escaped
 
 
 # Exit code used when a run completes but produced nothing. Distinct from 1
@@ -462,7 +551,7 @@ EXIT_NO_PRODUCTS = 4
 # Nothing was refused while this repo was built — see the README for the
 # addresses and the dates — so this path is implemented and unexercised
 # here, which is a fact about this repo's testing rather than a claim about
-# the site or about what a solver can do (§19).
+# the site or about what a solver can do.
 EXIT_BLOCKED = 3
 
 # Exit code for a run that gathered SOME rows and then stopped early — a
@@ -523,7 +612,7 @@ def write_run_meta(out_prefix: str, meta: dict) -> str:
     both complete, and between runs of different `mode`.
     """
     path = f"{out_prefix}.meta.json"
-    with open(path, "w", encoding="utf-8") as f:
+    with _atomic(path) as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print(f"[+] Wrote run metadata -> {path} (status={meta.get('status')})")
     return path
@@ -589,7 +678,8 @@ def run_meta(status: str, stop_reason: str, pages_requested: int,
 
 
 def save(rows: Sequence[Any], out_prefix: str, fmt: str,
-         allow_empty: bool = False, row_cls: Type = Product) -> int:
+         allow_empty: bool = False, row_cls: Type = Product,
+         stats: Optional[dict] = None) -> int:
     """Write JSON/CSV and return a process exit code.
 
     Returns 0 when rows were written, EXIT_NO_PRODUCTS when there were none.
@@ -616,8 +706,18 @@ def save(rows: Sequence[Any], out_prefix: str, fmt: str,
         write_json(rows, f"{out_prefix}.json")
         print(f"[+] Saved {len(rows)} products -> {out_prefix}.json")
     if fmt in ("csv", "both"):
-        write_csv(rows, f"{out_prefix}.csv", row_cls=row_cls)
+        escaped = write_csv(rows, f"{out_prefix}.csv", row_cls=row_cls)
         print(f"[+] Saved {len(rows)} products -> {out_prefix}.csv")
+        # Through `stats`, because this function's return value is an exit
+        # code. The caller puts it in the sidecar, which is what declares
+        # that the CSV and the JSON deliberately differ.
+        if stats is not None:
+            stats["csv_cells_escaped"] = escaped
+        if escaped:
+            print(f"[!] {escaped} CSV cell(s) began with a formula character "
+                  f"and were prefixed with {CSV_FORMULA_ESCAPE!r} so a "
+                  f"spreadsheet reads them as text. The JSON output is "
+                  f"unchanged — see csv_cells_escaped in the sidecar.")
     return 0 if rows else EXIT_NO_PRODUCTS
 
 
@@ -630,8 +730,8 @@ def save(rows: Sequence[Any], out_prefix: str, fmt: str,
 # feed with an opaque cursor and hands back a null one when there is nothing
 # after the page just read. That is the site saying "this is all of it", and
 # it is the cleanest completion signal any repo in this family has — no
-# selector, no convention, no guess (§7's layer 3, with the site doing the
-# arithmetic).
+# selector, no convention, no guess, with the site doing the
+# arithmetic.
 #
 # "listed_items_exhausted" is the one that is specific to OpenSea and is
 # COMPLETE rather than partial, which is the most consequential line in this
@@ -691,7 +791,9 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
     # names has a hole for every name nobody added to it.
     complete = stop_reason in COMPLETE_STOP_REASONS and not pages_failed
     row_cls = ROW_CLASS_BY_MODE.get(mode, Product)
-    rc = save(rows, out_prefix, fmt, allow_empty=allow_empty, row_cls=row_cls)
+    write_stats: dict = {}
+    rc = save(rows, out_prefix, fmt, allow_empty=allow_empty, row_cls=row_cls,
+              stats=write_stats)
     wrote_output = bool(rows) or allow_empty
 
     if wrote_output:
@@ -702,12 +804,15 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
             pages_requested=pages_requested, pages_completed=pages_completed,
             pages_failed=pages_failed, mode=mode, source=source,
             start_url=start_url, final_url=final_url, products=len(rows),
-            extra=extra))
+            # UNDER the caller's `extra`, never over it: a collision here
+            # would be housekeeping silently dropping something the site said.
+            extra=({**write_stats, **(extra or {})} if write_stats
+                   else extra)))
 
     if not rows:
         # Nothing gathered at all, and WHY decides the code. The three
         # outcomes are genuinely different things and a pipeline branches on
-        # them (§8: blocked is not empty is not partial):
+        # them (blocked is not empty is not partial):
         #
         #   blocked          something stood between the run and the content
         #   did not complete we never reached the site — a dead proxy, a

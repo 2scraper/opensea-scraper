@@ -2,7 +2,7 @@
 
 OpenSea answers a request five ways and four of them want a different
 response, which is why this module exists rather than the same triage being
-written three times inside three engines and drifting apart (§1):
+written three times inside three engines and drifting apart:
 
     content    the page's inlined state names rows, or its tiles rendered
     empty      a collection slug that does not exist (a real HTTP 404), or a
@@ -42,7 +42,7 @@ passes its own driver's primitives and keeps its browser plumbing to itself:
     page_height() -> Optional[int]      document.body.scrollHeight
     sleep(ms) -> None                   wait
 
-No JavaScript crosses that boundary in either direction (§1): Selenium's
+No JavaScript crosses that boundary in either direction: Selenium's
 `execute_script` takes a function BODY with an explicit `return` where
 Playwright and pyppeteer take `() => expr`, so this module names the
 OPERATION and each engine spells it in its own driver's dialect.
@@ -78,7 +78,7 @@ READY_SELECTOR_BY_MODE = {
     "collections": SELECTORS["collection_link"],
 }
 
-# Above 1, per §5: waiting for a single match resolves on the site's own
+# Above 1: waiting for a single match resolves on the site's own
 # navigation — the header links to /collections and to several collections
 # by name — long before a grid paints. Measured first paints on 2026-09-17:
 # 32 distinct item links on a collection page, 25 collection links on the
@@ -135,11 +135,11 @@ def wait_for_count(count: Callable[[str], int], sleep: Callable[[int], None],
     page, 2026-09-17). Playwright's `wait_for_function` hands the browser a
     string to evaluate, which that policy refuses outright: on a sibling site
     with the same gap it died with `EvalError` and took the run down with
-    exit 1 (§18). Counting elements over the protocol is a CDP call, works
+    exit 1. Counting elements over the protocol is a CDP call, works
     under any CSP, and spells the same in all three drivers.
 
     Returns the count it ended on, whether or not it reached the floor:
-    reporting a timeout is not the same as exiting on one (§8).
+    reporting a timeout is not the same as exiting on one.
     """
     waited = 0
     found = count(selector)
@@ -156,7 +156,7 @@ def wait_for_count(count: Callable[[str], int], sleep: Callable[[int], None],
 # ---------------------------------------------------------------------------
 # Lazy loading
 # ---------------------------------------------------------------------------
-# §8's second case. OpenSea's grids ARE infinite-scroll — the site's own UI
+# Lazy loading. OpenSea's grids ARE infinite-scroll — the site's own UI
 # fetches the next fifty over GraphQL as you reach the bottom — but this
 # scraper never needs that, because it asks for the next page over the same
 # endpoint the grid uses and gets a hundred rows instead of fifty.
@@ -170,7 +170,7 @@ def wait_for_count(count: Callable[[str], int], sleep: Callable[[int], None],
 # distance — a fixed wheel stops short on a long grid and the trigger is
 # never reached — and require the count AND the height to hold still for
 # THREE rounds, because the next batch takes longer to arrive than a single
-# pause (§8).
+# pause.
 SCROLL_STABLE_ROUNDS = 3
 SCROLL_MAX_ROUNDS = 6
 SCROLL_PAUSE_MS = 2_000
@@ -219,7 +219,7 @@ def classify(html: Optional[str], status: Optional[int] = None,
     Getting that wrong is not a style question: a sibling repo shipped two of
     three engines calling this as `classify(html, url=…)`, both crashed on
     their first fetch, and nothing short of a live run or a signature-binding
-    check saw it (§17). This repo's smoke suite binds every shared-module
+    check saw it. This repo's smoke suite binds every shared-module
     call in every engine for that reason.
 
     `mode` matters here and does not in the siblings: which inlined operation
@@ -232,7 +232,7 @@ def classify(html: Optional[str], status: Optional[int] = None,
 
 
 # The retry/solve/blocked decision as DATA rather than as three copies of an
-# if-chain in three engines (§1).
+# if-chain in three engines.
 #
 #   parse    is there anything on this page worth writing down?
 #   retry    would fetching it again, in a fresh context, plausibly help?
@@ -243,7 +243,7 @@ STATE_POLICY: Dict[str, Dict[str, bool]] = {
     # A collection slug that does not exist, under a real HTTP 404, or a feed
     # the site itself says is empty. Asked and answered; a second fetch
     # returns the same thing. Not blocked: exit 4 is "ran fine, found
-    # nothing", which is exactly what happened (§8).
+    # nothing", which is exactly what happened.
     "empty":     {"parse": False, "retry": False, "solve": False, "blocked": False},
     # Served and still painting. Parsed rather than discarded, because by the
     # time an engine asks, the readiness wait has already run.
@@ -258,11 +258,11 @@ STATE_POLICY: Dict[str, Dict[str, bool]] = {
     # address and the date), so `solve: True` here is a CAPABILITY and not a
     # measurement of this site. The one thing that must never be written is
     # that it cannot be solved, because that would be a sentence about this
-    # repo's code dressed up as a fact about a paid product (§19).
+    # repo's code dressed up as a fact about a paid product.
     #
     # Nothing is charged for a page that carries no widget: the solver raises
     # rather than building a task from a sitekey-less detection, which is
-    # §8's "detected != paying" with a price tag on it.
+    # "detected is not paying", with a price tag on it.
     "challenge": {"parse": False, "retry": True,  "solve": True,  "blocked": True},
     "blocked":   {"parse": False, "retry": True,  "solve": False, "blocked": True},
 }
@@ -271,7 +271,7 @@ STATE_POLICY: Dict[str, Dict[str, bool]] = {
 # Every state the parser can return has a row here, and every row here is a
 # state the parser can return. Asserted at import rather than in a test,
 # because a state with no policy falls back to `blocked` — which is the safe
-# direction and also the silent one (§17: a policy that looks enforced and is
+# direction and also the silent one (a policy that looks enforced and is
 # not).
 assert set(STATE_POLICY) == set(PAGE_STATES), (
     "STATE_POLICY and product_parser.PAGE_STATES disagree: "
@@ -328,11 +328,38 @@ RETRY_ON_BLOCKED = True
 BLOCK_RETRIES_WITHOUT_POOL = 3
 SOLVES_PER_PAGE = 1
 
+
+class SolveBudget:
+    """One page's allowance of paid captcha solves.
+
+    Every engine creates ONE of these per page and passes it to EVERY call
+    that may buy a solve: the check before the page is classified and the
+    one after. It is spent immediately BEFORE the solver is called, so a
+    detection that pays for nothing (no key, rows already on the page, no
+    sitekey) costs nothing, and it is never reset by a retry, a fresh
+    context or a rotation to another exit: a page that keeps coming back as
+    a challenge is a reason to re-fetch, not a new allowance.
+    """
+
+    def __init__(self, limit: int = None):
+        self.limit = SOLVES_PER_PAGE if limit is None else int(limit)
+        self.spent = 0
+
+    def remaining(self) -> int:
+        return max(0, self.limit - self.spent)
+
+    def spend(self) -> bool:
+        """Take one solve from the allowance. False when none is left."""
+        if self.spent >= self.limit:
+            return False
+        self.spent += 1
+        return True
+
 # There is deliberately NO `BLOCK_RETRIES_WITH_POOL` beside the constant
 # above, and its absence is the point. It used to be here, set to 4, and
 # nothing read it: with a pool the budget is `--proxy-block-retries`, which
 # defaults to 2, so the constant was a second number claiming a different
-# policy while the flag quietly decided the real one. §17 calls that a
+# policy while the flag quietly decided the real one. That is a
 # policy constant nothing consults — the same defect as dead code, and
 # harder to see, because the prose reads like enforcement. The with-pool
 # budget is the FLAG; the constant above is the fallback for when there is
@@ -340,9 +367,9 @@ SOLVES_PER_PAGE = 1
 
 # Whether a retry has to discard the browser context rather than reload the
 # page. True, on the family's rule that a challenge issued against one
-# session is not cleared by asking that same session again — and on §8's
+# session is not cleared by asking that same session again — and on the rule
 # "a rotation is a fresh browser", which is the same rule with a proxy in it.
-# Consulted by all three engines; a constant no engine read would be the §17
+# Consulted by all three engines; a constant no engine read would be the
 # defect of a policy that looks enforced and is not.
 RETRY_NEEDS_FRESH_CONTEXT = True
 
@@ -350,7 +377,7 @@ RETRY_NEEDS_FRESH_CONTEXT = True
 # ---------------------------------------------------------------------------
 # A throttle is not a block
 # ---------------------------------------------------------------------------
-# §24's lesson, carried here from a sibling site that could measure it: a
+# A lesson carried here from a sibling site that could measure it: a
 # refusal and a throttle want OPPOSITE responses. A block says "this exit is
 # unwelcome", so the answer is a different exit. A throttle says "too fast",
 # so the answer is the SAME exit and a longer wait — rotating away from it
@@ -482,14 +509,14 @@ def block_advice(html: Optional[str], headless: bool, has_pool: bool,
     Says what is measured and says what is not. The temptation is to repeat a
     sibling repo's ordering — "use a real window first" — but that ordering
     came from ITS measurements. Here headless and headful were measured
-    identical, so repeating it would be §13's inherited number wearing a
+    identical, so repeating it would be an inherited number wearing a
     fact's clothes.
     """
     marker = detect_block_marker(html or "") or "no vendor marker"
     lead = f"blocked ({marker})"
     hints: List[str] = []
 
-    # SAY WHAT WAS OBSERVED BEFORE SAYING WHY (§28). When the engine itself
+    # SAY WHAT WAS OBSERVED BEFORE SAYING WHY. When the engine itself
     # stripped the proxy credentials it knows the likeliest cause, and the
     # general advice below — raise --delay, try --headful — points a reader
     # away from it. Measured 2026-10-13: Selenium with an authenticated
@@ -540,6 +567,28 @@ def block_advice(html: Optional[str], headless: bool, has_pool: bool,
 # ---------------------------------------------------------------------------
 # Pagination — cursors, and the one that ends a walk early on purpose
 # ---------------------------------------------------------------------------
+def number_at_least(flag: str, minimum, kind=int):
+    """An argparse `type=` that refuses a value below `minimum`, naming `flag`.
+
+    Counts and delays are refused at parse time rather than clamped: a
+    negative `--delay` or a `--pages 0` would otherwise be quietly reinterpreted
+    and look honoured while not being.
+    """
+    def parse(value):
+        try:
+            number = kind(value)
+        except (TypeError, ValueError):
+            raise argparse.ArgumentTypeError(
+                "%s must be a %s, got %r"
+                % (flag, "whole number" if kind is int else "number", value))
+        if number < minimum:
+            raise argparse.ArgumentTypeError(
+                "%s must be at least %s, got %r" % (flag, minimum, value))
+        return number
+    parse.__name__ = "number_at_least_%s" % flag.strip("-").replace("-", "_")
+    return parse
+
+
 def attempts(value) -> int:
     """`--retries` as a number of ATTEMPTS, never zero.
 
@@ -547,15 +596,14 @@ def attempts(value) -> int:
     usage message rather than four seconds into a run.
 
     The bug this closes was found by a third-party audit on 2026-10-13, and
-    the audit was right about the symptom and wrong about the cause (§28).
+    the audit was right about the symptom and wrong about the cause.
     Its live run passed `--retries 0`; the load loop is
     `for attempt in range(1, args.retries + 1)`, so with 0 it never executes,
     `goto` is never called, and the engine then classifies `about:blank` —
     **39 bytes** — as a refusal. The audit reported "OpenSea returned 39
     bytes with no vendor markers" and concluded availability was unproven.
 
-    Reproduced and settled here with one variable changed, which is §28's
-    rule:
+    Reproduced and settled here with one variable changed:
 
         --retries 0   exit 3, 39 bytes, four attempts, 37 s
         --retries 1   exit 0, 1,395,922 bytes, 50 rows, 100% coverage, 11 s
@@ -619,7 +667,7 @@ def price_boundary_reached(cursor: Optional[str]) -> bool:
     remainder of the collection in no particular order.
 
     THE REASON FOR THIS STOP CHANGED, and the first version of it has
-    rotted, which is worth leaving written down (§13).
+    rotted, which is worth leaving written down.
 
     Measured 2026-09-17: passing such a cursor back answered
     `{"errors":[{"message":"Something went wrong"}]}`, so this was written as
@@ -633,7 +681,7 @@ def price_boundary_reached(cursor: Optional[str]) -> bool:
 
     So the stop is unchanged and its justification is now the DATA rather
     than an error message: see `prices_ran_out`, which the engines check
-    beside this. §7 says a terminating condition must be a property of the
+    beside this. A terminating condition must be a property of the
     catalogue rather than of the markup, and "the endpoint rejects this
     cursor" was the markup.
     """
@@ -646,7 +694,7 @@ def prices_ran_out(rows, sort: str) -> bool:
     The data-side half of the stop above, and the half that survives the
     site changing its mind about the cursor. Under a price ordering a page
     with not one priced row means the boundary was crossed on the page
-    before it, and §7 wants the terminating condition to be exactly this
+    before it, and the terminating condition should be exactly this
     kind of fact.
 
     Only meaningful under a price ordering: under `created` an unpriced page
@@ -663,7 +711,7 @@ def sort_note(sort: str, rows: int, totals: Optional[dict] = None) -> str:
     Printed rather than swallowed, because "I asked for 20 pages and got 3"
     with no explanation is indistinguishable from the family's most expensive
     bug — a dead next-page selector quietly returning a third of the data
-    with exit 0 (§7). Here the run really did get every item that has a
+    with exit 0. Here the run really did get every item that has a
     price, and the difference has to be visible in the log and in the
     sidecar.
     """
@@ -689,7 +737,7 @@ def sort_note(sort: str, rows: int, totals: Optional[dict] = None) -> str:
 def totals_note(totals: Optional[dict], rows: int) -> Optional[str]:
     """What share of the collection this run actually holds.
 
-    §21's "complete and exhaustive are different words", with the site doing
+    "Complete" and "exhaustive" are different words, with the site doing
     the arithmetic: a three-page run of a 9,998-item collection is genuinely
     complete under its ordering AND is 3% of the collection. A sidecar that
     records only the first is lying by omission.
@@ -714,14 +762,14 @@ def collection_totals_on_page(html: Optional[str]) -> dict:
 def page_gap(html: Optional[str], parsed: int) -> Optional[int]:
     """None, always, on this site — and that is the honest answer.
 
-    §8's rank arithmetic works where a site NUMBERS its items: 30 rows
+    Rank arithmetic works where a site NUMBERS its items: 30 rows
     spanning ranks 1-50 proves 20 cards never loaded. OpenSea numbers
     nothing. A token's rarity RANK exists but is a property of the token
     rather than of this page's ordering, and a ranking's position is one this
     scraper assigns from the row order rather than one the site publishes.
 
     None rather than 0, because an unknown gap is not a gap of zero and the
-    two must not read the same in a sidecar (§8).
+    two must not read the same in a sidecar.
     """
     return None
 
@@ -733,7 +781,7 @@ def degraded_to_dom(rows) -> bool:
     and it emits an address and a name and NO prices (see
     `product_parser.rows_from_dom`). So a file built entirely out of it has
     the right columns, the right row count and no money in it — which is the
-    §8 failure this family keeps meeting: a tool doing less than it says
+    failure this family keeps meeting: a tool doing less than it says
     while reporting success.
 
     Measured 2026-10-13, which is why this exists: opensea.io stopped
@@ -756,7 +804,7 @@ def parsed_nothing_from_a_served_page(html: Optional[str], rows: int) -> bool:
     """A page that was SERVED, links to items, and produced no rows.
 
     That is this parser's bug and not an empty collection, and the two must
-    not report the same (§20). The engines give it its own stop reason so a
+    not report the same. The engines give it its own stop reason so a
     reader opens `product_parser.py` instead of checking their URL for a
     typo.
 
@@ -782,7 +830,7 @@ def concurrency_refusal(url: str = "", mode: str = "") -> Optional[str]:
     """Why concurrency above 1 is refused for this run.
 
     Refused WITH the reason rather than silently running one worker, which
-    would look like the flag did something (§18).
+    would look like the flag did something.
 
     This is the one place OpenSea is strictly worse than a site with page
     numbers: the family's `--concurrency` exists because `?page=5` can be

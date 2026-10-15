@@ -11,7 +11,7 @@
 #
 # A sibling repo in this family needs `playwright install chrome` instead,
 # because ITS site answered the bundled Chromium with HTTP 429 and real
-# Chrome with 200. That is a fact about that site, not about this one (§13),
+# Chrome with 200. That is a fact about that site, not about this one,
 # which is why it was re-measured here rather than copied. `--browser-channel
 # chrome` remains available if you want a real Chrome anyway.
 playwright>=1.40.0

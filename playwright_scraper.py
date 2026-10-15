@@ -165,7 +165,7 @@ class PageOutcome:
 
     Collected per page and merged afterwards rather than folded into shared
     state as the loop goes: dedupe that mutates a running set inside the loop
-    makes the OUTPUT depend on the order pages happened to arrive in (§8).
+    makes the OUTPUT depend on the order pages happened to arrive in.
     Pages are strictly sequential here, which is exactly why keeping the
     merge order-independent costs nothing and keeps the family's contract.
     """
@@ -183,7 +183,7 @@ class PageOutcome:
     # count, floor. Page 1 only; the cursor pages do not carry it.
     totals: Optional[dict] = None
     # None, always, on this site: OpenSea numbers nothing, and an unknown gap
-    # must not read the same as a gap of zero (§8).
+    # must not read the same as a gap of zero.
     gap: Optional[int] = None
     # How many rows page 1 rendered that this run could not use, because it
     # asked a different question than the page answers, or because the page
@@ -209,7 +209,7 @@ class PageOutcome:
 # three engines make it identically. What lives here is only HOW to ask this
 # particular driver.
 #
-# The primitives are NAMED OPERATIONS rather than JavaScript (§1). Selenium's
+# The primitives are NAMED OPERATIONS rather than JavaScript. Selenium's
 # execute_script takes a function BODY with an explicit `return` while
 # Playwright and pyppeteer take `() => expr`, so a shared module handing JS
 # across this boundary would quietly acquire one driver's dialect.
@@ -238,7 +238,7 @@ def _scroll_to_bottom(page) -> None:
     To `document.body.scrollHeight` rather than by a fixed wheel distance: a
     fixed wheel stopped three rounds short of the bottom on a sibling site's
     7,600px grid, so the lazy-load trigger was never reached and a run took
-    30 of 50 cards while looking settled (§8).
+    30 of 50 cards while looking settled.
 
     A real function object, not a string — see the module docstring on this
     site's CSP.
@@ -261,7 +261,7 @@ def _page_height(page) -> Optional[int]:
 # SAME threshold in all three engines. A threshold that differed between them
 # would mean one engine reporting `complete` where its twins report `partial`
 # on the identical run, which is precisely the drift the shared modules exist
-# to prevent (§6).
+# to prevent.
 _SITE_HOST_FRAGMENTS = ("opensea.io",)
 
 
@@ -320,7 +320,7 @@ def _proxy_failure(exc) -> str:
     Distinguishing this from an ordinary timeout matters because the two want
     opposite responses: a timeout deserves a retry from the same exit, while
     an unusable exit deserves a different one — retrying it unchanged just
-    spends the budget on a proxy that is not going to answer (§8).
+    spends the budget on a proxy that is not going to answer.
     """
     text = str(exc)
     for marker in _PROXY_ERROR_MARKERS:
@@ -335,7 +335,7 @@ def _launch_local(pw, args, pool):
     Factored out so a proxy rotation can tear the whole browser down and call
     it again. Swapping the proxy under a live session would be cheaper and
     wrong: cookies a bot manager issued against one exit, replayed from
-    another, are a stronger signal than either address alone (§8).
+    another, are a stronger signal than either address alone.
     """
     launch_kwargs = {"headless": args.headless}
     proxy = to_playwright(pool.current) if pool else None
@@ -387,7 +387,7 @@ def _launch_local(pw, args, pool):
     # inside that call, and `TurnstileTaskProxyless` needs all four. No static
     # read of the HTML, however careful, can produce a solvable task — so the
     # hook goes on the CONTEXT, before any page script runs, and covers every
-    # document including the one a redirect lands on (§19).
+    # document including the one a redirect lands on.
     #
     # Harmless where there is no Turnstile, which on this site is every page
     # measured so far. Installed anyway because the alternative is
@@ -455,7 +455,7 @@ def _connect_remote(pw, args):
         # terminal, in CI output and in any log the run is piped to, which is
         # the one thing this project promises does not happen. The host and
         # port are KEPT: which endpoint failed is the useful half and is not
-        # the secret (§8).
+        # the secret.
         raise PWError(
             f"could not connect to --cdp-endpoint "
             f"{_mask_credentials(args.cdp_endpoint)}: "
@@ -500,7 +500,7 @@ def _connect_remote(pw, args):
 # Matching GLOBALLY rather than once is the point: a Playwright connection
 # error repeats the endpoint five times, so a masker that handled only the
 # first occurrence would print the password four times and look like it was
-# working (§8).
+# working.
 _CREDENTIALS_IN_URL_RE = re.compile(r"([a-z][a-z0-9+.\-]*://)[^\s/@]+:[^\s/@]+@",
                                     re.IGNORECASE)
 
@@ -541,7 +541,7 @@ def _content_when_settled(page, attempts: int = 4, pause_ms: int = 700):
 # A REAL FUNCTION OBJECT, not a string. opensea.io's CSP has no
 # `unsafe-eval`, so `page.evaluate("<expression string>")` and
 # `wait_for_function` are both refused by the browser; a function passed like
-# this goes through `Runtime.callFunctionOn` and is unaffected (§18).
+# this goes through `Runtime.callFunctionOn` and is unaffected.
 #
 # Issued from INSIDE the page rather than from Python for three reasons, and
 # each of them is something a separate HTTP client would get wrong:
@@ -556,7 +556,7 @@ def _content_when_settled(page, attempts: int = 4, pause_ms: int = 700):
 #     with no second proxy configuration to keep in step.
 #
 # The body is built by `product_parser.graphql_body` and not here, so all
-# three engines send byte-identical requests (§6).
+# three engines send byte-identical requests.
 GRAPHQL_FETCH_JS = """
 async ({endpoint, body}) => {
   try {
@@ -584,7 +584,7 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
     That last one matters more here than in most of the family — this
     endpoint answers HTTP 200 with an `errors` array rather than a 4xx, so a
     caller that only checks the status code reads a failure as an empty page
-    (§8, fail loudly).
+    (fail loudly).
     """
     outcome = PageOutcome(page_num=page_num, url=session.page.url)
     body = graphql_body(
@@ -593,7 +593,7 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
         activity_filter=args.activity)
 
     # TWO INDEPENDENT BUDGETS, and keeping them independent is the whole
-    # point (§24). `attempt` counts TRANSPORT faults against `--retries`,
+    # point. `attempt` counts TRANSPORT faults against `--retries`,
     # which is the caller's allowance for things going wrong. A throttle is
     # not one of those: it is the site asking us to slow down, the exit is
     # fine, and waiting is the answer — so a throttle wait does not consume a
@@ -657,8 +657,8 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
             return outcome
 
         if page_flow.is_throttle(status):
-            # A THROTTLE, not a refusal, and the two want opposite responses
-            # (§24). Waiting at the SAME exit is the answer; rotating away
+            # A THROTTLE, not a refusal, and the two want opposite responses.
+            # Waiting at the SAME exit is the answer; rotating away
             # would spend the block budget and an exit on a page that was
             # about to come back. It has its own budget so that `--retries`,
             # which is the caller's allowance for transient faults, is not
@@ -687,7 +687,7 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
 
         if page_flow.is_refusal(status):
             # The endpoint refusing is a REFUSAL, not an empty page. Reported
-            # as blocked so the run's exit code says so (§8).
+            # as blocked so the run's exit code says so.
             logger.error("Page %d: the endpoint answered HTTP %d.",
                          page_num, status)
             outcome.blocked_by = "endpoint-http-%d" % status
@@ -708,13 +708,13 @@ def _graphql_page(session, args, cursor: Optional[str], page_num: int):
     return outcome
 
 
-def handle_captcha_if_present(page, args) -> bool:
+def handle_captcha_if_present(page, args, budget) -> bool:
     """Detect and solve a challenge. True if something was solved.
 
     Runs after EVERY navigation, for ANY page. The static-HTML and runtime
     reCAPTCHA detectors are run and RECONCILED against each other rather than
     short-circuited, because they can disagree about the variant and the
-    parameters for one are rejected for the other (§8).
+    parameters for one are rejected for the other.
 
     WHAT IS AND IS NOT KNOWN HERE. No challenge was met in the captures taken
     for this repo, and the pages carry no captcha configuration at all: 0
@@ -724,7 +724,7 @@ def handle_captcha_if_present(page, args) -> bool:
     UNEXERCISED on opensea.io, and saying that plainly is the point — a
     sibling repo shipped a README sentence claiming a captcha here "cannot be
     solved", which was a statement about its own missing code dressed up as a
-    fact about a paid product, and it cost a release (§19).
+    fact about a paid product, and it cost a release.
 
     What IS true: the site sits behind Cloudflare, a managed challenge
     renders a Turnstile, and 2Captcha solves that with
@@ -741,7 +741,7 @@ def handle_captcha_if_present(page, args) -> bool:
     # instant — which is why this check sits here rather than after the
     # readiness wait. The other way round would cost 25 wasted seconds on a
     # page the challenge genuinely gates, where solving FIRST is what makes
-    # the content appear (§8).
+    # the content appear.
     already_rendered = _count(page, _ready_selector(args))
     when_blocked = getattr(args, "solve_captcha", "when-blocked") == "when-blocked"
 
@@ -783,6 +783,12 @@ def handle_captcha_if_present(page, args) -> bool:
     if not args.twocaptcha_key:
         logger.warning("No 2captcha API key, so this challenge cannot be "
                        "solved — continuing with whatever the page holds.")
+        return False
+    # The page's allowance is spent HERE, immediately before the purchase,
+    # so both call sites in _fetch_first_page and every block-retry share it.
+    if not budget.spend():
+        logger.warning("This page has already used its %d paid solve(s) — "
+                       "not buying another.", budget.limit)
         return False
     try:
         token = solve_recaptcha(challenge, args.twocaptcha_key,
@@ -861,14 +867,14 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
     outcome = PageOutcome(page_num=1, url=url)
     has_pool = bool(pool and len(pool) > 1)
     # `RETRY_ON_BLOCKED` is CONSULTED, not merely documented — a policy
-    # constant nothing reads is the same defect as dead code (§17).
+    # constant nothing reads is the same defect as dead code.
     block_retries = 0 if not page_flow.RETRY_ON_BLOCKED else (
         args.proxy_block_retries if has_pool
         else page_flow.BLOCK_RETRIES_WITHOUT_POOL)
     # Counted across the whole block-retry loop, not per attempt: a page that
     # keeps coming back as a challenge would otherwise buy one solve per
     # rotation, which is how a run quietly turns into a bill.
-    solves_bought = 0
+    budget = page_flow.SolveBudget()
     html, state, load_failed = None, "ok", False
     status = None
 
@@ -887,7 +893,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
                 # (net::ERR_PROXY_CONNECTION_FAILED), not PWTimeout —
                 # catching only the latter lets it escape as a traceback,
                 # which is the likeliest failure the first time anyone points
-                # --proxy-file at a real list (§8).
+                # --proxy-file at a real list.
                 reason = _proxy_failure(e)
                 if reason:
                     exit_failed, load_failed = reason, True
@@ -910,14 +916,14 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
         if load_failed:
             break
 
-        if handle_captcha_if_present(session.page, args):
+        if handle_captcha_if_present(session.page, args, budget):
             session.page.wait_for_timeout(1000)
 
         html = _content_when_settled(session.page) or ""
         state = _classify(session.page, html, status, args.mode)
 
         # "Not painted yet" is not a fault, and telling it apart from one is
-        # the distinction §8 is about. Wait for the anchor and re-classify
+        # the distinction that matters here. Wait for the anchor and re-classify
         # BEFORE the retry decision — retrying a shell buys another shell.
         if page_flow.is_unpainted(state, html):
             wait_timeout = page_flow.content_timeout_ms(args.mode)
@@ -936,14 +942,13 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
             state = _classify(session.page, html, status, args.mode)
 
         if (page_flow.should_solve(state)
-                and solves_bought < page_flow.SOLVES_PER_PAGE):
-            solves_bought += 1
-            if handle_captcha_if_present(session.page, args):
+                and budget.remaining()):
+            if handle_captcha_if_present(session.page, args, budget):
                 session.page.wait_for_timeout(1000)
                 html = _content_when_settled(session.page) or html
                 state = _classify(session.page, html, status, args.mode)
                 # The VERIFIED outcome, and the only one worth reporting: a
-                # "ready" task result is not evidence the token works (§19).
+                # "ready" task result is not evidence the token works.
                 if state == "content":
                     logger.info("The solve was accepted — page 1 is content "
                                 "now.")
@@ -973,7 +978,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
                 # clears an edge challenge where a reload does not, which is
                 # what `page_flow.RETRY_NEEDS_FRESH_CONTEXT` says — and a
                 # constant no engine consulted would be dead policy dressed
-                # up as enforcement (§17).
+                # up as enforcement.
                 #
                 # NOT relaunched over --cdp-endpoint: a Scraping Browser
                 # profile allows one live connection, so reconnecting risks
@@ -1034,7 +1039,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
         selector, threshold = _ready_selector(args), _min_matches(args, html)
         content_timeout = page_flow.content_timeout_ms(args.mode)
         # A POLL, not wait_for_function: this site's CSP has no
-        # `unsafe-eval` and would refuse an evaluated string outright (§18).
+        # `unsafe-eval` and would refuse an evaluated string outright.
         found = page_flow.wait_for_count(
             lambda sel: _count(session.page, sel),
             session.page.wait_for_timeout, selector, threshold, content_timeout)
@@ -1049,7 +1054,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
 
     # Dumping on success, not only on failure: a run can return the right
     # NUMBER of rows with a field silently unpopulated, and then the only way
-    # to tell a parsing bug from a too-early snapshot is the exact bytes (§9).
+    # to tell a parsing bug from a too-early snapshot is the exact bytes.
     if args.dump_html:
         dump_path = args.dump_html if args.pages == 1 else f"{args.dump_html}.page1"
         with open(dump_path, "w", encoding="utf-8") as f:
@@ -1066,7 +1071,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
     # TWO conditions, and the second is the one a site change breaks.
     #
     # `args.ssr_usable` is about the REQUEST: whether this run asks the same
-    # question the page renders (§21's ordering lesson). `state_answered` is
+    # question the page renders (the ordering decides which rows exist). `state_answered` is
     # about the RESPONSE: whether the page inlined its rows at all.
     #
     # Measured 2026-10-13: opensea.io stopped shipping `urql_transport` on
@@ -1101,7 +1106,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
         # is asking, and its cursor belongs to that other ordering. Dropped
         # rather than mixed in: two orderings in one file are two samples,
         # and `sort` in the sidecar could only be right about one of them
-        # (§21 — the ordering is a column, not a presentation detail).
+        # (the ordering is a column, not a presentation detail).
         outcome.ssr_dropped = len(rows)
         logger.info("%s", ssr_mismatch_note(
             args.mode, sort=args.sort, ranking=args.ranking,
@@ -1119,7 +1124,7 @@ def _fetch_first_page(session, args, pool) -> PageOutcome:
         except Exception as e:  # noqa: BLE001
             logger.warning("Could not capture screenshot: %s", e)
         if page_flow.parsed_nothing_from_a_served_page(html, len(rows)):
-            # §20: a page that was SERVED, links to N items and parses to
+            # A page that was SERVED, links to N items and parses to
             # zero rows is THIS PARSER'S bug, not an empty collection.
             # Reported as what it is, so a reader opens product_parser.py
             # instead of checking their URL for a typo.
@@ -1142,7 +1147,7 @@ def _report_coverage(rows: List, page_num: int, mode: str) -> None:
     """Log what share of this page carries the columns the mode is for.
 
     Reported every time, not only when it looks wrong, so a consumer gets the
-    number rather than a threshold someone guessed (§13).
+    number rather than a threshold someone guessed.
     """
     if not rows:
         return
@@ -1185,7 +1190,7 @@ def scrape(args) -> int:
     concurrency = max(1, args.concurrency)
     if concurrency > 1:
         # Refused WITH the reason rather than quietly running one worker,
-        # which would look like the flag did something (§18).
+        # which would look like the flag did something.
         logger.warning("--concurrency %d is refused: %s.", concurrency,
                        page_flow.concurrency_refusal(args.url, args.mode))
         concurrency = 1
@@ -1274,7 +1279,7 @@ def scrape(args) -> int:
                         blocked = outcome.blocked_by is not None
                         break
                     if not outcome.products:
-                        # The data-side termination condition §7 asks for: a
+                        # The data-side termination condition: a
                         # page with no rows on it is the end of the feed,
                         # whatever the cursor says.
                         stop_reason = "no_new_products"
@@ -1285,7 +1290,7 @@ def scrape(args) -> int:
                     rank_seen += len(outcome.products)
                     cursor = outcome.next_cursor
 
-                    # The DATA-side half of the price boundary (§7). The
+                    # The DATA-side half of the price boundary. The
                     # cursor's null key is the cheap signal and it belongs to
                     # the site's internals — it was an error in September and
                     # pages fine in October. A page with not one priced row
@@ -1314,7 +1319,7 @@ def scrape(args) -> int:
 
     # A run built ENTIRELY out of the DOM fallback is a degraded read, and
     # saying so is the whole point of carrying `data_source` as a column
-    # (§8: never present a guess as a fact). The rows are real and the
+    # (never present a guess as a fact). The rows are real and the
     # prices are not there at all, so this is neither a block nor an empty
     # result — it is a complete-looking file holding a worse answer, and it
     # gets its own stop reason so a reader lands on the parser rather than
@@ -1356,7 +1361,7 @@ def scrape(args) -> int:
         "activity_filter": args.activity if args.mode == "activity" else None,
         "collection": args.collection_slug or None,
         "locale": locale_of(final_url),
-        # §21's arithmetic: what the site says the collection holds, beside
+        # What the site says the collection holds, beside
         # what this run read. `complete` means the walk finished, not that it
         # read the whole collection.
         "collection_totals": totals,
@@ -1446,45 +1451,60 @@ def parse_args():
                         f"{DEFAULT_ACTIVITY_FILTER}). `sales` is the one most "
                         f"callers want; `all` includes listings, offers, "
                         f"transfers and mints.")
-    p.add_argument("--pages", type=int, default=1,
-                   help=f"Pages to fetch (default 1, cap {PAGE_CAP}). Page 1 "
-                        f"is the page itself and carries 50 rows; every page "
-                        f"after it is a cursor request to the site's own "
-                        f"endpoint and carries up to --limit. A run stops "
-                        f"early, and reports COMPLETE, when the site hands "
-                        f"back no cursor or when a price-ordered walk reaches "
-                        f"the end of the listed items.")
-    p.add_argument("--limit", type=int, default=MAX_LIMIT, metavar="N",
-                   help=f"Rows per cursor page (default and maximum "
-                        f"{MAX_LIMIT} — the endpoint states that limit "
-                        f"itself). Page 1 always carries the 50 the site "
-                        f"server-renders, whatever this says.")
+    p.add_argument(
+        "--pages",
+        type=page_flow.number_at_least("--pages", 1),
+        default=1,
+        help=f"Pages to fetch (default 1, cap {PAGE_CAP}). Page 1 "
+             f"is the page itself and carries 50 rows; every page "
+             f"after it is a cursor request to the site's own "
+             f"endpoint and carries up to --limit. A run stops "
+             f"early, and reports COMPLETE, when the site hands "
+             f"back no cursor or when a price-ordered walk reaches "
+             f"the end of the listed items.")
+    p.add_argument(
+        "--limit",
+        type=page_flow.number_at_least("--limit", 1),
+        default=MAX_LIMIT, metavar="N",
+        help=f"Rows per cursor page (default and maximum "
+             f"{MAX_LIMIT} — the endpoint states that limit "
+             f"itself). Page 1 always carries the 50 the site "
+             f"server-renders, whatever this says.")
     p.add_argument("--category", default=None,
                    help="Accepted for the family's shape and mapped onto "
                         "--collection, because on OpenSea the thing a run is "
                         "pointed at IS a collection.")
-    p.add_argument("--delay", type=float, default=1.0,
-                   help="Delay between pages, seconds (default 1.0). The "
-                        "endpoint publishes its own budget in an "
-                        "`x-ratelimit-remaining` header (400 when this was "
-                        "written), so this is politeness with a number behind "
-                        "it rather than a guess.")
-    p.add_argument("--concurrency", type=int, default=1, metavar="N",
-                   help="Accepted for the family's shape and REFUSED above 1, "
-                        "with the reason: OpenSea paginates with an opaque "
-                        "cursor, so page 5's request does not exist until "
-                        "page 4 has been read and there is nothing to hand a "
-                        "second worker. Run several collections at once, one "
-                        "process each.")
+    p.add_argument(
+        "--delay",
+        type=page_flow.number_at_least("--delay", 0, float),
+        default=1.0,
+        help="Delay between pages, seconds (default 1.0). The "
+             "endpoint publishes its own budget in an "
+             "`x-ratelimit-remaining` header (400 when this was "
+             "written), so this is politeness with a number behind "
+             "it rather than a guess.")
+    p.add_argument(
+        "--concurrency",
+        type=page_flow.number_at_least("--concurrency", 1),
+        default=1, metavar="N",
+        help="Accepted for the family's shape and REFUSED above 1, "
+             "with the reason: OpenSea paginates with an opaque "
+             "cursor, so page 5's request does not exist until "
+             "page 4 has been read and there is nothing to hand a "
+             "second worker. Run several collections at once, one "
+             "process each.")
     p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3). "
                         "The pause between attempts doubles each time. A page "
                         "that comes back EMPTY is not retried — see "
                         "page_flow.STATE_POLICY — because an empty feed is a "
                         "correct answer, not a fault.")
-    p.add_argument("--retry-delay", type=float, default=2.0,
-                   help="Seconds before the first retry, doubling thereafter "
-                        "(default 2.0)")
+    p.add_argument(
+        "--retry-delay",
+        type=page_flow.number_at_least("--retry-delay", 0, float),
+        default=2.0,
+        help="Seconds before the first retry, doubling thereafter "
+             "(default 2.0)")
     p.add_argument("--format", choices=["json", "csv", "both"], default="both")
     p.add_argument("--out", default="opensea_items",
                    help="Output file prefix")
@@ -1519,10 +1539,13 @@ def parse_args():
     p.add_argument("--proxy-shuffle", action="store_true",
                    help="Shuffle the pool at startup, so concurrent runs do "
                         "not all begin on the first exit in the file.")
-    p.add_argument("--proxy-block-retries", type=int, default=2,
-                   help="When a page comes back refused, retry it from this "
-                        "many OTHER exits before giving up (default 2). Needs "
-                        "a pool of more than one; ignored otherwise.")
+    p.add_argument(
+        "--proxy-block-retries",
+        type=page_flow.number_at_least("--proxy-block-retries", 0),
+        default=2,
+        help="When a page comes back refused, retry it from this "
+             "many OTHER exits before giving up (default 2). Needs "
+             "a pool of more than one; ignored otherwise.")
     p.add_argument("--twocaptcha-key", default=None, help="2captcha.com API key")
     p.add_argument("--allow-empty", action="store_true",
                    help="Write output files even when 0 rows were found. Off "
@@ -1537,7 +1560,7 @@ def parse_args():
     # ONE OS-family tag, not a list — and the default is what makes
     # --fingerprint work at all. It shipped as "Windows,Chrome,Desktop" across
     # this family, which the API rejects with HTTP 400, so --fingerprint
-    # failed on every invocation in four repos at once (§17).
+    # failed on every invocation in four repos at once.
     p.add_argument("--fp-tags", default="Windows",
                    help="ONE OS-family tag for the fingerprint filter: "
                         "Windows, Microsoft Windows or Android. NOT a list — "
@@ -1564,7 +1587,7 @@ def parse_args():
                         "sitekey. No challenge was met on opensea.io while "
                         "this was written, so the path is unexercised HERE — "
                         "which is a fact about this repo's testing and not a "
-                        "claim about what a solver can do (§19). A page "
+                        "claim about what a solver can do. A page "
                         "carrying no widget is reported unsolved rather than "
                         "charged for.")
     p.add_argument("--min-score", type=float, default=0.7,
@@ -1601,7 +1624,7 @@ def parse_args():
                         "`<path>.pageN.json`, because what the parser saw "
                         "there was a JSON body and not a document.")
     # HEADLESS by default, and that is this site's own measurement rather
-    # than the family's habit (§19 says to measure it once per site).
+    # than the family's habit (measure it once per site).
     p.add_argument("--headless", dest="headless", action="store_true",
                    default=True,
                    help="Run headless. THE DEFAULT, and measured identical to "
@@ -1614,10 +1637,24 @@ def parse_args():
     args = p.parse_args()
     # Fill --twocaptcha-key / --cdp-endpoint / --proxy / --url from the
     # environment or .env when the flag was not given. An explicit flag wins.
+    # What the user TYPED, captured before the environment fills anything in.
+    # An OPENSEA_URL from the environment or .env is a default for a bare
+    # run; it must never outrank --collection, --category or --mode
+    # collections, or the run silently reads the environment's collection.
+    typed_url = args.url
     env_config.apply(args)
 
     if args.category and not args.collection:
         args.collection = args.category
+    if not typed_url and args.url and (args.collection
+                                       or args.mode == "collections"):
+        logger.info("Ignoring OPENSEA_URL (%s): --collection/--category or "
+                    "--mode collections says what to read.", args.url)
+        args.url = None
+    if (typed_url and args.collection
+            and collection_slug_from_url(typed_url) != args.collection):
+        p.error(f"--url {typed_url!r} and --collection {args.collection!r} "
+                f"name different things. Give one of the two.")
     if not args.url:
         if args.collection:
             mode = args.mode or "items"
@@ -1639,7 +1676,7 @@ def parse_args():
         # Refused rather than attempted. The parser's state reader, its path
         # patterns and its whole GraphQL vocabulary are this site's, so
         # pointing it at another marketplace would not fail loudly — it would
-        # return zero rows and look like an empty collection (§5).
+        # return zero rows and look like an empty collection.
         p.error(why)
 
     normalized = normalize_url(args.url)

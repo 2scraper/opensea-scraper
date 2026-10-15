@@ -14,6 +14,19 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 
 ## [Unreleased]
 
+> **Behaviour changes in this batch, read before upgrading a script:**
+> `OPENSEA_URL` no longer outranks `--collection`, `--category` or
+> `--mode collections` (it used to make `--collection pudgypenguins` scrape
+> the environment's collection instead), and `.env.example` now ships it
+> commented out. `--pages 0`, `--limit 0`, `--concurrency 0` and negative
+> `--delay`, `--retry-delay` and `--proxy-block-retries` are usage errors
+> (exit 2) instead of being accepted; `scraper_api_client.py --retries -1`
+> too. A typed `--url` that names a different collection from
+> `--collection` is refused. CSV cells that begin with `=`, `+`, `-`, `@`, a
+> tab or a line break now get a leading apostrophe (CSV only; the JSON is
+> unchanged) and the sidecar counts them in `csv_cells_escaped`. The
+> canary now fails, rather than warning, when OpenSea was not actually read.
+
 > **If you script this scraper: `--retries 0` is now a usage error (exit 2).**
 > It used to be accepted and to mean "never fetch the page" — the load loop
 > is `range(1, retries + 1)` — so a run passing it classified the empty
@@ -22,6 +35,47 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 > 250 rows to the same machine a minute later.
 
 ### Fixed
+
+- **A page that kept coming back as a challenge could buy up to five
+  captcha solves.** Each engine checks for a challenge before and after
+  classifying the page, and re-fetches up to three more times; only the
+  second check was counted, so the per-page limit of one did not hold
+  (5 solver calls against a limit of 1, reproduced with the solver stubbed,
+  in all three engines). Both checks now draw on one per-page allowance,
+  spent immediately before the purchase and never reset by a retry or a
+  rotation. A suite check drives each engine with its driver stubbed.
+- **`OPENSEA_URL` silently replaced `--collection`.** With the URL
+  `.env.example` used to ship, `--collection pudgypenguins` scraped Bored
+  Apes and `--mode collections` was refused as a mismatch. What was typed is
+  now captured before the environment is applied.
+- **Output files are written atomically.** `out.json`, `out.csv` and
+  `out.meta.json` are written to a temporary file beside the target and
+  renamed over it, so a crash, a full disk or a Ctrl-C mid-write leaves the
+  previous good file in place (before: an error injected inside `json.dump`
+  left 12 bytes of invalid JSON). A new file gets the mode `open()` would
+  have given it; an existing file keeps its own.
+- **`diff_runs.py` compared item columns in every mode**, so a collections
+  run whose volume went from 100 to 5,000, or an activity event whose type
+  changed, reported 0 changed. The compared columns are now per mode, the
+  mode comes from the sidecar (or the rows), and its help and docstring
+  describe OpenSea rather than another site.
+- **The credential scan read nothing when the clone sat under a directory
+  called `live`, `captures` or `venv-…`**, because its exclusions were
+  matched against the absolute path, and still printed "nothing
+  credential-shaped". Exclusions are now relative to the repository, and a
+  scan that read 0 files fails.
+- Numeric flags reject values below their floor with an error naming the
+  flag (see the blockquote above).
+- `.gitignore` covers `--dump-html NAME --pages N` dumps (`NAME.pageN`), the
+  usual scratch and output directory names and a root-level `*.html`;
+  `.dockerignore` excludes every `.env*`.
+- The docs no longer say Scraping Browser credentials "live about a day":
+  how long they last varies, and a 401 is the sign to refresh them.
+- Shipped files no longer cite section numbers of an internal document; the
+  rules are stated in this repository's own words, and a suite check keeps
+  it that way.
+- CI's sample-output step calls `.github/ci_checks.py --sample-check` instead
+  of a second inline copy of the same check.
 
 - **Two of the three modes had silently degraded, and the run still said
   `complete`.** Between 2026-09-17 and 2026-10-13 OpenSea stopped inlining
@@ -76,7 +130,7 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   rows deep, and pages 4 to 10 carried zero priced items. OpenSea fixed
   their end. The behaviour is unchanged, because a floor scrape should still
   stop where the prices stop, but it is now keyed on a page with no priced
-  row (§7: a terminating condition is a property of the catalogue, not of
+  row (a terminating condition is a property of the catalogue, not of
   the transport). Every copy of the old claim in the code and the docs has
   been corrected rather than quietly dropped.
 
@@ -119,7 +173,7 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   with a plain client.
 
 - **The proxy path, run for the first time**, which was the last credentialled
-  path §16 asks for and the one that had never been exercised. Through a
+  path left to verify and the one that had never been exercised. Through a
   2Captcha residential exit (the global mix, which came out in RU rather than
   the EU its hostname suggests): Playwright 250 rows over 3 pages with one
   timeout retried and recovered; pyppeteer 50 rows through
@@ -132,8 +186,8 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   The check worth having a real credential for: **the password appears in no
   process command line**, verified with `ps` mid-run. The browser is given
   `--proxy-server=http://eu.proxy.2captcha.com:2334` — host and port only.
-  That is §3's central promise, checked against a live secret instead of a
-  fixture.
+  That is the central promise (a secret never reaches argv), checked
+  against a live secret instead of a fixture.
 
   The data did not move: 250 of 250 rows identical to the Finnish datacentre
   and US Scraping Browser runs, on 12 stable columns each. Four unrelated

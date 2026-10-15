@@ -12,7 +12,7 @@ endpoint answers an anonymous POST with no key, no cookie and no signed
 header. The page you are looking at and the endpoint it calls hand back the
 SAME objects — the server-rendered state inlined in the HTML is literally an
 urql cache of those GraphQL responses — so ONE normaliser reads both routes
-and they cannot drift (§21, which is where this pattern was learned).
+and they cannot drift (which is where this pattern was learned).
 
 That is why this file has two entry points and one set of row builders:
 
@@ -28,7 +28,7 @@ WHAT THIS SITE DOES NOT HAVE
 * **No product JSON-LD.** Measured 2026-09-17: a collection page carries
   three `application/ld+json` blocks and they are `BreadcrumbList`, `Brand`
   and `WebSite` — site navigation and a collection description, not items.
-  §4 says count the blocks before claiming a JSON-LD path, and counting them
+  The rule is to count the blocks before claiming a JSON-LD path, and counting them
   is what says there isn't one. The site's own inlined state is the primary
   path instead, and the URL pattern is the fallback.
 
@@ -36,7 +36,7 @@ WHAT THIS SITE DOES NOT HAVE
   cursor-paginated: a response carries `nextPageCursor`, an opaque
   base64 string, and the next request passes it back as `after`. There is no
   address for page 2 of a collection, which is why `page_url()` returns None
-  and `--concurrency` above 1 is refused with the reason (§7, §18).
+  and `--concurrency` above 1 is refused with the reason.
 
 WHAT IT DOES HAVE THAT IS EASY TO GET WRONG
 -------------------------------------------
@@ -49,7 +49,7 @@ WHAT IT DOES HAVE THAT IS EASY TO GET WRONG
 
 * **A price is a TOKEN amount, and the token is named.** `ETH`, `WETH`,
   `SOL`, `USDC`. It is never assumed: `_price()` reads the symbol the site
-  published and returns None when there is not one, which is §4's rule with
+  published and returns None when there is not one, which is the never-assume-a-currency rule with
   crypto in place of fiat.
 
 * **An EMPTY symbol is a real state, and it is common.** On the Bored Ape
@@ -63,7 +63,7 @@ WHAT IT DOES HAVE THAT IS EASY TO GET WRONG
   collection with nothing listed, but a ranking's rolling stats publish
   `floorPriceChange: 0` and `sales: 0` for a window in which nothing
   happened — those zeros are real measurements and stay. The nulls stay
-  null. (§21's "zero is not a rating", in the shape this site takes it.)
+  null. ("Zero is not a rating", in the shape this site takes it.)
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ MODES = ("items", "collections", "activity")
 # fallback. Anchored on the URL PATTERN and never on a class: OpenSea's
 # classes are Tailwind utilities and build hashes that change on every
 # deploy, while `/item/{chain}/…` is the address it publishes to search
-# engines (§4).
+# engines.
 SELECTORS = {
     "item_link": 'a[href*="/item/"]',
     "item_card": 'a[href*="/item/"]',
@@ -245,7 +245,7 @@ def mode_for_url(url: str) -> Optional[str]:
 def unsupported_reason(url: str) -> Optional[str]:
     """Why this scraper refuses `url`, or None if it will take it.
 
-    Refused rather than attempted, and WITH the reason (§5). Every path
+    Refused rather than attempted, and WITH the reason. Every path
     pattern, every payload field name and the whole GraphQL vocabulary in
     this file are OpenSea's, so pointing this at another marketplace would
     not fail loudly — it would return zero rows and read as an empty
@@ -352,7 +352,7 @@ def page_url(url: str, page_num: int) -> None:
     family has it and the smoke suite checks that the engines agree about
     what it returns. Returning None is the honest answer and the engines
     read it as "ask the site for the next cursor instead"; returning a made-
-    up `?page=N` would be the §7 failure in its purest form, since OpenSea
+    up `?page=N` would be the selector-only pagination failure in its purest form, since OpenSea
     answers an unknown query parameter with page 1 and a run built on it
     would report COMPLETE holding fifty rows over and over.
     """
@@ -423,7 +423,7 @@ def ssr_operations(html: Optional[str]) -> List[dict]:
 
     Returns [] rather than raising on anything malformed: a page that ships
     a payload this cannot read is a page the DOM fallback should get a turn
-    at, not a crash (§8 — but a failure that returns [] must be VISIBLE,
+    at, not a crash (but a failure that returns [] must be VISIBLE,
     which is what `parsed_nothing_from_a_served_page` in page_flow is for).
     """
     if not html:
@@ -483,7 +483,7 @@ def collection_totals(html: Optional[str]) -> Dict[str, Any]:
 
     A collection page ships its own `collectionBySlug.stats` beside the fifty
     items it renders — `totalSupply`, `listedItemCount`, its floor and its
-    volume. That is the arithmetic §21 calls for: a run of three pages is
+    volume. That is the arithmetic that matters: a run of three pages is
     genuinely `complete` under the ordering it used AND is 300 rows of a
     9,998-item collection, and a sidecar that says only "complete" is lying
     by omission. The engines put this in `extra` and log the percentage.
@@ -521,7 +521,7 @@ def count_cards(html: Optional[str]) -> int:
     Counts DISTINCT addresses, not anchors: a rendered tile links to its item
     twice (the image and the name), so 192 `/item/` anchors on a collection
     page are 32 items. The family learned that counting links instead of ids
-    is what lets a tile-scoping walk steal its neighbour's data (§4), and the
+    is what lets a tile-scoping walk steal its neighbour's data, and the
     same arithmetic error would make a readiness threshold meaningless here.
     """
     if not html:
@@ -535,7 +535,7 @@ def count_cards(html: Optional[str]) -> int:
 # ---------------------------------------------------------------------------
 # Was this page served by OpenSea at all?
 # ---------------------------------------------------------------------------
-# The structural test §8 and §18 both arrive at: a page the site really
+# The structural test: a page the site really
 # served is BUILT OUT OF ITS OWN ASSETS, and an interstitial — or Chromium's
 # own network-error page, which carries `<title>opensea.io</title>` and would
 # fool any title check — is not.
@@ -547,8 +547,8 @@ def count_cards(html: Optional[str]) -> int:
 #   seadn.io             309 to   634
 #
 # Note the 404 is in that list and passes, which is correct: OpenSea's "not
-# found" IS an OpenSea page, and it is `empty` rather than `blocked` (§8 —
-# blocked is not empty).
+# found" IS an OpenSea page, and it is `empty` rather than `blocked` (blocked
+# is not empty).
 _SITE_ASSET_MARKERS = ("/_next/static/", "seadn.io", "i2c.seadn.io")
 _SITE_ASSET_FLOOR = 2
 
@@ -562,7 +562,7 @@ def served_by_opensea(html: Optional[str]) -> bool:
 
 
 # Vendor markers for a challenge. EVERY ONE OF THESE WAS COUNTED ON PAGES
-# KNOWN TO BE GOOD FIRST (§18), on 2026-09-17, across the homepage, a
+# KNOWN TO BE GOOD FIRST, on 2026-09-17, across the homepage, a
 # collection page, an item page, a Solana collection page, a Japanese-locale
 # collection page, the ranking and the site's own 404:
 #
@@ -588,11 +588,11 @@ def served_by_opensea(html: Optional[str]) -> bool:
 # So the obvious marker fires on a perfectly good 1.26 MB page holding the
 # full catalogue, and the one that works is absent from it. Carrying
 # `cf-turnstile` would report exit 3 on every page fetched over the paid
-# path — which is exactly what happened to a sibling repo's first live run
-# (§8, §19). `smoke_test.py` pins this against a real Scraping Browser
+# path — which is exactly what happened to a sibling repo's first live run.
+# `smoke_test.py` pins this against a real Scraping Browser
 # capture, because a sibling shipped the same check and it passed for the
 # wrong reason: it ran only against pages fetched with a plain client, which
-# carry no injection at all (§21).
+# carry no injection at all.
 #
 # With it gone, nothing in this set matches anything that extension injects,
 # so this repo needs no extension-tag strip either; adding one would be dead
@@ -615,7 +615,7 @@ BOT_CHALLENGE_MARKERS = {
 # entity-escape the punctuation in its own markers — `errors&#46;edgesuite&#46;net`
 # reaching a raw HTTP client and `errors.edgesuite.net` reaching a browser
 # DOM, which is one marker with two spellings and a check that silently
-# covers only one of them (§20). Unescaping a bounded PREFIX handles both
+# covers only one of them. Unescaping a bounded PREFIX handles both
 # without spending the cost on two megabytes of grid, and without a product
 # name deep in a collection description reading as a marker.
 _MARKER_SCAN_BYTES = 200_000
@@ -648,7 +648,7 @@ def is_challenge_page(html: Optional[str]) -> bool:
 # Chromium's own network-error page. Not an interstitial and not the site: it
 # carries `<title>opensea.io</title>`, so a title check calls it a real page,
 # and the only thing that reads it correctly is asking whether the document
-# was built out of the site's assets (§18, proven on a third site here).
+# was built out of the site's assets (proven on a third site here).
 _BROWSER_ERROR_MARKERS = ("ERR_PROXY_CONNECTION_FAILED",
                           "ERR_TUNNEL_CONNECTION_FAILED",
                           "ERR_NAME_NOT_RESOLVED",
@@ -665,12 +665,12 @@ def is_browser_error_page(html: Optional[str]) -> bool:
 
 # The site's own way of saying a feed has nothing in it. An UNAMBIGUOUS
 # positive signal — no interstitial carries it — so it is checked before any
-# threshold (§17's classification-order trap).
+# threshold (order signals by how much they prove).
 #
-# WHAT IS DELIBERATELY NOT IN THIS SET, and it is the §18 trap caught in the
+# WHAT IS DELIBERATELY NOT IN THIS SET, and it is the marker trap caught in the
 # act. OpenSea's "not found" page reads `404: This page could not be found.`,
 # which looks like the obvious marker for an unknown collection slug. Counted
-# first on pages known to be good, as §18 requires: that sentence appears
+# first on pages known to be good, as every marker must be: that sentence appears
 # TWICE on every served page measured — the collection page, the ranking, an
 # item page, a Solana collection and a Japanese-locale page alike — because
 # Next.js ships its bundled not-found component inside every RSC payload.
@@ -698,7 +698,7 @@ def detect_page_state(html: Optional[str], status: Optional[int] = None,
     """Which of the five states this response is.
 
     Ordered by how much each signal PROVES rather than by how cheap it is to
-    check (§17): an inlined payload naming rows is proof the site served
+    check: an inlined payload naming rows is proof the site served
     this page, and it is checked before any status code or threshold. The
     heuristic — "was this built out of OpenSea's assets?" — is last among the
     positives, because a minimal real page can carry fewer asset references
@@ -871,7 +871,7 @@ DEFAULT_ACTIVITY_FILTER = "all"
 # handed over is not even valid for the other ordering: a `--sort created`
 # run passing the page's price cursor was answered `Invalid cursor` and
 # reported partial (measured on mad-lads, 2026-09-17, which is exactly the
-# second-collection run §15 asks for).
+# second-collection run a new site needs).
 #
 # So the engines compare, and where the request does not match the page they
 # take page 1 as proof-of-service and totals only, then start the feed from
@@ -930,7 +930,7 @@ def graphql_body(mode: str, *, slug: str = "", limit: int = MAX_LIMIT,
 
     Built here rather than in the engines so all three send byte-identical
     requests — a query that differed between engines would mean one of them
-    reporting columns its twins cannot (§6).
+    reporting columns its twins cannot.
     """
     if mode not in QUERIES:
         raise ValueError(f"no GraphQL query for mode {mode!r}")
@@ -958,7 +958,7 @@ def graphql_errors(payload: Any) -> List[str]:
 
     The endpoint answers HTTP 200 with an `errors` array rather than a 4xx,
     so a caller that only checks the status code reads a failure as an empty
-    page. That is exactly the "fail loudly" case (§8).
+    page. That is exactly the "fail loudly" case.
     """
     if not isinstance(payload, dict):
         return []
@@ -993,7 +993,7 @@ def graphql_data(payload: Any, mode: str = "items") -> Optional[dict]:
 # first element becomes `null`. Recognising it here lets a floor scrape stop
 # where the prices stop, which is what a price-ordered walk is for.
 #
-# WHAT THIS USED TO SAY, AND WHY THE CORRECTION IS LEFT HERE (§13). Measured
+# WHAT THIS USED TO SAY, AND WHY THE CORRECTION IS LEFT HERE. Measured
 # on boredapeyachtclub 2026-09-17: three pages of 100, 282 of the 300
 # listed, then a null key — and passing that cursor back answered
 # `{"errors":[{"message":"Something went wrong"}]}`. The stop was written as
@@ -1004,7 +1004,7 @@ def graphql_data(payload: Any, mode: str = "items") -> Optional[dict]:
 # rows deep with no error, and pages 4 to 10 — seven hundred rows — carried
 # zero priced items. OpenSea fixed their end. The stop is unchanged because
 # the fact it stood for is unchanged, but it no longer rests on an error
-# message: `page_flow.prices_ran_out` reads the rows instead, which is §7's
+# message: `page_flow.prices_ran_out` reads the rows instead, on the
 # rule that a terminating condition belongs to the catalogue rather than to
 # the transport. A captured response for both behaviours is pinned in the
 # fixtures under `_endpoint_edges`.
@@ -1029,7 +1029,7 @@ def _clean(value: Any) -> Any:
 
     OpenSea publishes `"symbol": ""` for a token it has not named — 11 of 50
     last sales on one capture — and an empty string written into a currency
-    column reads as a currency (§8: never present a guess as a fact, and an
+    column reads as a currency (never present a guess as a fact, and an
     empty string is a guess that something was there).
     """
     if isinstance(value, str) and not value.strip():
@@ -1111,7 +1111,7 @@ def item_row(node: Any, *, url_locale: Optional[str] = None,
 
     The same object shape comes from `collectionItems.items[]`, from
     `itemByIdentifier` on a single item's page, and from the inlined state of
-    either — which is why there is one builder rather than three (§21).
+    either — which is why there is one builder rather than three.
     """
     if not isinstance(node, dict):
         return None
@@ -1281,7 +1281,7 @@ def rows_from_nodes(nodes: Sequence[Any], mode: str, *, url: str = "",
     `page` and `first_position` are threaded rather than defaulted, because
     `position` restarts at 1 on every page: without the page number beside it
     a row from page 2 claims the same position as one from page 1 and the two
-    are indistinguishable in the output (§18).
+    are indistinguishable in the output.
     """
     builder = _ROW_BUILDER.get(mode)
     if builder is None or not isinstance(nodes, (list, tuple)):
@@ -1311,7 +1311,7 @@ def rows_from_graphql(payload: Any, url: str = "", *, mode: str = "items",
     Raises nothing on an error response — the caller reads `graphql_errors`
     for that and decides. Returning [] here and letting the caller log the
     messages keeps "the endpoint said no" distinguishable from "the feed is
-    empty", which is the whole of §8's blocked/empty/partial distinction in
+    empty", which is the whole of the blocked/empty/partial distinction in
     one function.
     """
     data = graphql_data(payload, mode)
@@ -1335,7 +1335,7 @@ def rows_from_dom(html: str, url: str, *, mode: str = "items", page: int = 1,
     Runs ONLY when the inlined state did not parse, and it is deliberately
     thin: a rendered OpenSea tile carries an address and a name and no
     machine-readable price — the prices in the markup are formatted display
-    text inside build-hashed elements, which is exactly what §4 says never to
+    text inside build-hashed elements, which is exactly what a parser should never
     anchor on. So these rows carry what the URL proves and leave every price
     null, with `data_source="dom"` saying so.
 
@@ -1398,7 +1398,7 @@ def parse_rows(html: str, url: str, *, page: int = 1, mode: str = "items",
                first_rank: Optional[int] = None) -> List[Any]:
     """Every row on this page, inlined state first and the DOM as fallback.
 
-    The order is the one §4 prescribes with the site's own data in place of
+    The order is structured data first, with the site's own data in place of
     JSON-LD: the structured source carries every row regardless of what has
     painted, and the rendered markup is what is left when it does not parse.
     """
