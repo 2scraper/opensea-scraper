@@ -50,7 +50,7 @@ sales feed of only sales. Two unrelated datacentre networks, one afternoon.
 So the paid products here buy **volume from many addresses, a specific
 country, browser infrastructure you do not run, and a solver for the day
 Cloudflare does issue its managed challenge** — not access. The
-[canary](#the-canary) re-runs that scrape every morning, precisely so that
+[canary](#the-canary) re-runs that scrape every Monday, precisely so that
 this claim is retested without anyone remembering to.
 
 ---
@@ -474,7 +474,7 @@ row one of them lacks would read as `removed`.
 ## The canary
 
 `.github/workflows/canary.yml` runs a real three-mode scrape against
-opensea.io every morning **with no secrets**, and is expected green. It
+opensea.io every Monday **with no secrets**, and is expected green. It
 asserts pagination reached at least three pages, that the price ladder
 ascends and its priced rows match OpenSea's own `listedItemCount`, that ranks
 are contiguous across pages, that `--activity sales` returns only sales, and
