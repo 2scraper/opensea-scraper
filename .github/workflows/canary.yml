@@ -1,12 +1,12 @@
 name: canary
 
-# One real run a day against opensea.io, and the only workflow in this repo
+# One real run a week (Mondays) against opensea.io, and the only workflow in this repo
 # that touches the site. tests.yml (deliberately) never does — see its own
 # header for why the two are separate.
 #
 # THIS CANARY NEEDS NO SECRETS, AND THAT IS THE POINT
 # ---------------------------------------------------
-# A canary that cannot pass must SKIP rather than go red every day,
+# A canary that cannot pass must SKIP rather than go red on every run,
 # because a check that is always red teaches everyone to ignore checks. The
 # other half of that rule: a canary that CAN pass without a
 # credential should never be gated on one.
@@ -15,7 +15,7 @@ name: canary
 # (AS24940) on 2026-09-17: every page kind, every mode and every locale
 # answered HTTP 200 with no key, no proxy and no account, and OpenSea's own
 # GraphQL endpoint — which is where every page after the first comes from —
-# answered an anonymous POST. So this runs a real three-mode scrape daily
+# answered an anonymous POST. So this runs a real three-mode scrape weekly
 # from a bare GitHub runner and is EXPECTED GREEN.
 #
 # That is not a convenience. It is what keeps the README's central claim
@@ -48,10 +48,6 @@ on:
   schedule:
     # 06:20 UTC. Off the hour, because everything else in the world runs on
     # it and a queued runner adds nothing but latency.
-    - cron: "20 6 * * *"
-    # Mondays: the same jobs, WITH the paid secrets (proxy, Scraping Browser,
-    # captcha key). On the daily run above those secrets read as empty, so
-    # it takes the free no-secret route and bills nothing.
     - cron: "20 6 * * 1"
   workflow_dispatch:
 
@@ -82,7 +78,7 @@ jobs:
       - name: Walk a collection's items
         id: items
         env:
-          OPENSEA_PROXY: ${{ (github.event_name != 'schedule' || github.event.schedule == '20 6 * * 1') && secrets.OPENSEA_PROXY || '' }}
+          OPENSEA_PROXY: ${{ secrets.OPENSEA_PROXY }}
         # `set +e`: GitHub runs `run:` steps under `bash -e`, so a non-zero
         # command aborts the step BEFORE the following echo, and
         # continue-on-error does not change that — it stops the step failing
@@ -248,7 +244,7 @@ jobs:
       - name: Scrape OpenSea's own ranking
         id: ranking
         env:
-          OPENSEA_PROXY: ${{ (github.event_name != 'schedule' || github.event.schedule == '20 6 * * 1') && secrets.OPENSEA_PROXY || '' }}
+          OPENSEA_PROXY: ${{ secrets.OPENSEA_PROXY }}
         run: |
           set +e
           python3 playwright_scraper.py \
@@ -328,7 +324,7 @@ jobs:
       - name: Scrape a collection's sales feed
         id: activity
         env:
-          OPENSEA_PROXY: ${{ (github.event_name != 'schedule' || github.event.schedule == '20 6 * * 1') && secrets.OPENSEA_PROXY || '' }}
+          OPENSEA_PROXY: ${{ secrets.OPENSEA_PROXY }}
         run: |
           set +e
           python3 playwright_scraper.py \
