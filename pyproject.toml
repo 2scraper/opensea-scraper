@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensea-scraper"
-version = "0.1.0"
+version = "0.2.0"
 description = "OpenSea NFT marketplace scraper: a collection's items, OpenSea's own collection ranking, and a collection's activity feed — listing prices, best offers, last sales, traits, rarity ranks and owners."
 readme = "README.md"
 license = "MIT"
