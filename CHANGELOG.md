@@ -14,6 +14,12 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 
 ## [Unreleased]
 
+### Changed
+
+- CI only: the canary's optional paid secret `OPENSEA_PROXY` now reaches it only on a new weekly
+  run (Mondays 06:20 UTC) and on a manual dispatch. The daily run keeps its
+  schedule and takes the free route without them, so it bills nothing.
+
 ## [0.2.0] - 2026-10-16
 
 > **Behaviour changes in this batch, read before upgrading a script:**
