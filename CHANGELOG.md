@@ -14,6 +14,8 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 > **Behaviour changes in this batch, read before upgrading a script:**
 > `OPENSEA_URL` no longer outranks `--collection`, `--category` or
 > `--mode collections` (it used to make `--collection pudgypenguins` scrape
@@ -104,7 +106,6 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   same way, and the suite pins it per engine by reading the source rather
   than through an import — a check gated behind importing the engine skips
   for exactly the engines whose driver is absent.
-
 - **A throttle is no longer treated as a block.** 429 and 503 want the
   opposite response to a 403: the exit is fine and the rate is not, so the
   answer is the same exit and a longer wait. They now have their own budget,
@@ -115,11 +116,23 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   not move across a burst of 60 requests. This path is implemented and
   unexercised here, and it is driven offline against a fake driver for that
   reason.
-
 - **A browser that will not start is exit 2, not a traceback.** A missing
   Chromium or a sandbox refusal is neither a bug here nor the site refusing
   us; it now reports one actionable line, with `--verbose` to re-raise the
   driver's own stack.
+- **The Scraper API path sent `waitFor` in a form the live API rejects,
+  and read the wrong field as the target's status.** Measured 2026-09-23
+  against `scraper.2captcha.com/tasks/sync`: `waitFor` sent as a
+  JSON-encoded string (what this client built for every `--wait-*` flag)
+  is answered HTTP 422 "params.waitFor must be an object" and is still
+  billed ($0.0005); the same request with an object gets HTTP 200. It is
+  now an object. And the response's `status` is the API's own verdict
+  ("success"), not the target site's HTTP code, which is `http_code` —
+  so a target 403 or 503 never reached the page classifier. The target
+  status is now read from `http_code` (falling back to `status` only if
+  that is an integer). Pinned by an offline check that drives the real
+  client with `requests.post` stubbed; verified by control (red with the
+  old client).
 
 ### Changed
 
@@ -133,9 +146,14 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   row (a terminating condition is a property of the catalogue, not of
   the transport). Every copy of the old claim in the code and the docs has
   been corrected rather than quietly dropped.
-
 - `complete` under `--sort price` now says in the log what it is complete
   FOR: the feed does not end at the boundary, and `--sort created` walks on.
+- The challenge-marker comment in `product_parser.py` and the README now
+  carry THIS site's measurement rather than a sibling's.
+- `page_flow.block_advice` names the four networks this site has actually
+  been measured serving, instead of "a plain datacentre address".
+- `SECURITY.md` said this project has no releases or version tags; it has
+  both. "Supported versions" now names the latest release and `main`.
 
 ### Added
 
@@ -149,9 +167,6 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   a resume would need is not thrown away. Not a resume feature — that needs
   atomic partial writes and a flag, and is a product decision.
 - `--verbose`, on all three engines.
-
-
-### Added
 
 - **A Scraping Browser fixture, and the check that needed it.** The
   `--cdp-endpoint` path was run for the first time: three modes over a
@@ -192,32 +207,6 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
   The data did not move: 250 of 250 rows identical to the Finnish datacentre
   and US Scraping Browser runs, on 12 stable columns each. Four unrelated
   networks now return the same rows for the same URL.
-
-### Changed
-
-- The challenge-marker comment in `product_parser.py` and the README now
-  carry THIS site's measurement rather than a sibling's.
-- `page_flow.block_advice` names the four networks this site has actually
-  been measured serving, instead of "a plain datacentre address".
-
-- `SECURITY.md` said this project has no releases or version tags; it has
-  both. "Supported versions" now names the latest release and `main`.
-
-### Fixed
-
-- **The Scraper API path sent `waitFor` in a form the live API rejects,
-  and read the wrong field as the target's status.** Measured 2026-09-23
-  against `scraper.2captcha.com/tasks/sync`: `waitFor` sent as a
-  JSON-encoded string (what this client built for every `--wait-*` flag)
-  is answered HTTP 422 "params.waitFor must be an object" and is still
-  billed ($0.0005); the same request with an object gets HTTP 200. It is
-  now an object. And the response's `status` is the API's own verdict
-  ("success"), not the target site's HTTP code, which is `http_code` —
-  so a target 403 or 503 never reached the page classifier. The target
-  status is now read from `http_code` (falling back to `status` only if
-  that is an integer). Pinned by an offline check that drives the real
-  client with `requests.post` stubbed; verified by control (red with the
-  old client).
 
 ## [0.1.0] - 2026-09-17
 
@@ -305,5 +294,6 @@ four ways to fetch a page.
   `challenges.cloudflare.com` is used instead, measured 0 on every served
   page.
 
-[Unreleased]: https://github.com/2scraper/opensea-scraper/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/2scraper/opensea-scraper/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/2scraper/opensea-scraper/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/2scraper/opensea-scraper/releases/tag/v0.1.0
