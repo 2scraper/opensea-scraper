@@ -1,4 +1,4 @@
-# opensea-scraper
+# OpenSea Scraper — NFT Items, Rankings and Activity in Python
 
 [![release](https://img.shields.io/github/v/release/2scraper/opensea-scraper?sort=semver)](https://github.com/2scraper/opensea-scraper/releases)
 [![tests](https://github.com/2scraper/opensea-scraper/actions/workflows/tests.yml/badge.svg)](https://github.com/2scraper/opensea-scraper/actions/workflows/tests.yml)
@@ -7,6 +7,8 @@
 [![licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 [![engines](https://img.shields.io/badge/engines-playwright%20%7C%20selenium%20%7C%20pyppeteer-lightgrey)](#engines)
 [![runs without an account](https://img.shields.io/badge/account-not%20required-brightgreen)](#you-do-not-need-an-account-a-key-or-a-proxy)
+
+**OpenSea scraper** — an open-source (MIT) Python tool that reads opensea.io collection pages, OpenSea's own collection ranking and a collection's activity feed, and writes NFT items with listing prices, best offers, last sales, traits, rarity ranks and owners, ranking rows with floors and volume, or sales, listings, offers, transfers and mints to JSON or CSV. On 2026-09-17 every page kind and every mode answered HTTP 200 to one datacentre address with no key, no proxy and no account. Use it to track a collection's floor and listed prices, or compare two runs of the same mode and sort with `diff_runs.py`.
 
 Scrapes [opensea.io](https://opensea.io) into JSON or CSV: **a collection's
 items** with their listing prices, best offers, last sales, traits, rarity
@@ -512,6 +514,23 @@ docker run --rm -v "$PWD/out:/out" opensea-scraper \
 ```
 
 ---
+
+## Guides
+
+- [How to run the 2scraper scrapers: setup, proxies, exit codes and access modes](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers) — installation, `.env`, `.meta.json` for the whole family.
+
+## Related scrapers
+
+Same CLI conventions, same output contract (one row per item, JSON or CSV, a `.meta.json` sidecar and shared exit codes):
+
+- [Polymarket scraper](https://github.com/2scraper/polymarket-scraper) — Prediction-market prices, order books, volumes and on-chain…
+- [Screener.in scraper](https://github.com/2scraper/screener-scraper) — Any screener.in stock screen or sector listing
+- [TipRanks scraper](https://github.com/2scraper/tipranks-scraper) — Smart Score, analyst consensus and price targets for any…
+- [Binance scraper](https://github.com/2scraper/binance-scraper) — P2P adverts, copy-trading portfolios and announcements…
+- [Google Finance scraper](https://github.com/2scraper/google-finance-scraper) — Quotes, quarterly financials, analyst targets, OHLCV, market…
+- [Better Business Bureau scraper](https://github.com/2scraper/bbb-scraper) — BBB search and category listings with no key or proxy, plus…
+
+All scrapers: [github.com/2scraper](https://github.com/2scraper) · Need another site? [Open a request](https://github.com/2scraper/.github/issues/new?title=%5BScraper%20request%5D%20)
 
 ## Contributing, security, licence
 
