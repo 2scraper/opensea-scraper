@@ -329,9 +329,9 @@ It is now checked with a live password rather than a fixture.
 
 **The data did not change.** 250 of 250 rows identical to the Finnish
 datacentre run and to the US Scraping Browser run, on 12 stable columns each.
-That makes four unrelated networks — a Finnish datacentre, a US cloud
-browser, a GitHub runner and a Russian residential exit — returning the same
-rows for the same URL.
+That makes four unrelated networks — a Finnish datacentre, a US Scraping
+Browser API profile, a GitHub runner and a Russian residential exit —
+returning the same rows for the same URL.
 
 ### The Scraping Browser path, measured
 

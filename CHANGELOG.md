@@ -17,6 +17,7 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 ### Changed
 
 - CI only: the canary now runs weekly (Mondays 06:20 UTC) and on a manual dispatch, with its optional secret `OPENSEA_PROXY` passed on every run; the daily schedule is removed.
+- Docs only: the README's comparison of networks names the 2Captcha Scraping Browser API path by its product name.
 
 ## [0.2.0] - 2026-10-16
 
