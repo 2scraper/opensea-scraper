@@ -15,6 +15,14 @@ WORKDIR /app
 
 COPY requirements.txt requirements-playwright.txt ./
 
+# libatomic1 first: Playwright's bundled Node driver needs it just to run
+# `playwright install`, i.e. before that command can install any system
+# dependency itself (the slim base image does not ship it; the build
+# failed with "libatomic.so.1: cannot open shared object file").
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # `playwright install chromium`, and unlike a sibling repo that is not a
 # compromise. OpenSea barely reads the client: the bundled Chromium was
 # served HTTP 200 and the full inlined state on every capture taken for this

@@ -16,6 +16,8 @@ was written, because anyone can read it with `git show v0.1.0:CHANGELOG.md`.
 
 ### Changed
 
+- CI only: the offline-checks job runs on `ubuntu-24.04` instead of `ubuntu-latest`, which moved to Ubuntu 26.04, where `actions/setup-python` has no Python 3.9 build. 3.9 stays the supported floor.
+- Docker: the image installs `libatomic1` before Playwright. Recent Playwright releases' Node driver needs it to run `playwright install` at all, and the slim base image does not ship it, so the image build failed.
 - CI only: the canary now runs weekly (Mondays 06:20 UTC) and on a manual dispatch, with its optional secret `OPENSEA_PROXY` passed on every run; the daily schedule is removed.
 - Docs only: the README's comparison of networks names the 2Captcha Scraping Browser API path by its product name.
 
